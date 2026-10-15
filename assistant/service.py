@@ -11,6 +11,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -79,7 +80,15 @@ def print_preview(preview: Preview) -> None:
     if preview.note:
         lines.append(f"Note: {preview.note}")
     lines.append("==========================")
-    print("\n".join(lines))
+    text = "\n".join(lines)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        try:
+            sys.stdout.buffer.write((text + "\n").encode("utf-8", errors="replace"))
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
 
 
 def describe(message: Any) -> Optional[str]:
