@@ -139,6 +139,46 @@ async def run_try(settings: Settings, text: str) -> int:
         return 1
 
 
+async def _handle_health_ping(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    try:
+        await reader.read(1024)
+        body = b"OK"
+        response = (
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+            b"Connection: close\r\n"
+            b"\r\n" + body
+        )
+        writer.write(response)
+        await writer.drain()
+    except Exception:
+        pass
+    finally:
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+
+async def _start_health_server_if_port(port_str: Optional[str]) -> Optional[asyncio.Server]:
+    if not port_str:
+        return None
+    try:
+        port = int(port_str)
+    except ValueError:
+        return None
+
+    try:
+        server = await asyncio.start_server(_handle_health_ping, "0.0.0.0", port)
+        logger.info("Health check server listening on 0.0.0.0:%d", port)
+        return server
+    except Exception as e:
+        logger.warning("Could not start health check server on port %d: %s", port, e)
+        return None
+
+
 async def run_bot(settings: Settings) -> None:
     """Run Telegram Business Assistant polling."""
     assert settings.bot_token is not None
@@ -192,9 +232,15 @@ async def run_bot(settings: Settings) -> None:
     dp = Dispatcher()
     dp.include_router(build_router(assistant))
 
+    port_env = os.environ.get("PORT")
+    health_server = await _start_health_server_if_port(port_env)
+
     try:
         await dp.start_polling(bot, allowed_updates=ALLOWED_UPDATES)
     finally:
+        if health_server:
+            health_server.close()
+            await health_server.wait_closed()
         await bot.session.close()
 
 
