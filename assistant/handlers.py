@@ -12,7 +12,7 @@ from assistant.service import Assistant
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_UPDATES = ["message", "business_connection", "business_message"]
+ALLOWED_UPDATES = ["message", "business_connection", "business_message", "callback_query"]
 
 
 def build_router(assistant: Assistant) -> Router:

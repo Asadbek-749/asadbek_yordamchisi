@@ -33,6 +33,14 @@ from assistant.service import (
     read_profile,
 )
 from assistant.store import ensure_private_dir
+from discipline import (
+    DisciplineCoach,
+    DisciplineScheduler,
+    DisciplineService,
+    build_discipline_router,
+    close_db,
+    init_db,
+)
 
 logger = logging.getLogger("assistant")
 
@@ -229,8 +237,19 @@ async def run_bot(settings: Settings) -> None:
             bot_user.username,
         )
 
+    # Initialize Database for Discipline & Productivity System
+    await init_db(data_dir=settings.data_dir)
+
+    discipline_coach = DisciplineCoach(assistant.generator)
+    discipline_service = DisciplineService(discipline_coach)
+    discipline_router = build_discipline_router(discipline_service, settings.owner_id)
+
     dp = Dispatcher()
+    dp.include_router(discipline_router)
     dp.include_router(build_router(assistant))
+
+    discipline_scheduler = DisciplineScheduler(bot, discipline_service, settings.owner_id)
+    discipline_scheduler.start()
 
     port_env = os.environ.get("PORT")
     health_server = await _start_health_server_if_port(port_env)
@@ -238,6 +257,8 @@ async def run_bot(settings: Settings) -> None:
     try:
         await dp.start_polling(bot, allowed_updates=ALLOWED_UPDATES)
     finally:
+        discipline_scheduler.stop()
+        await close_db()
         if health_server:
             health_server.close()
             await health_server.wait_closed()
