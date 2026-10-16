@@ -236,5 +236,87 @@ def build_nargis_owner_router(owner_id: int) -> Router:
             parse_mode="HTML",
         )
 
+    # ─────────────────────────────────────────────
+    # Forwarded message from owner: auto-register contact & link to pending draft!
+    # ─────────────────────────────────────────────
+    @router.message(is_owner, F.forward_origin | F.forward_from | F.forward_sender_name)
+    async def handle_forwarded_contact(message: Message) -> None:
+        """When owner forwards any message from a chat to Nargis, automatically register that contact."""
+        from nargis.dispatcher import get_message_dispatcher
+        dispatcher = get_message_dispatcher()
+
+        target_id: Optional[int] = None
+        target_name: Optional[str] = None
+        target_username: Optional[str] = None
+
+        origin = getattr(message, "forward_origin", None)
+        if origin:
+            sender_user = getattr(origin, "sender_user", None)
+            if sender_user:
+                target_id = getattr(sender_user, "id", None)
+                target_name = getattr(sender_user, "full_name", None) or getattr(sender_user, "first_name", None)
+                target_username = getattr(sender_user, "username", None)
+            elif getattr(origin, "sender_user_name", None):
+                target_name = origin.sender_user_name
+        elif getattr(message, "forward_from", None):
+            ff = message.forward_from
+            target_id = ff.id
+            target_name = ff.full_name or ff.first_name
+            target_username = ff.username
+        elif getattr(message, "forward_sender_name", None):
+            target_name = message.forward_sender_name
+
+        if not target_name and not target_id:
+            await message.answer("⚠️ Uzatilgan (forward qilingan) xabardan kontakt ma'lumotlarini ajratib bo'lmadi.")
+            return
+
+        display_name = target_name or f"User_{target_id}"
+        contact = await contact_svc.add_or_update_contact(
+            first_name=display_name,
+            telegram_id=target_id,
+            username=target_username,
+        )
+
+        user_disp = f"@{contact.username}" if contact.username else "—"
+        id_disp = f"<code>{contact.telegram_id}</code>" if (contact.telegram_id and contact.telegram_id > 0) else "Aniqlanmagan"
+
+        # Check if there is a pending message draft waiting for contact info
+        draft = dispatcher.get_pending_draft(owner_id)
+        if draft and draft.status == "WAITING_INFO":
+            draft.contact_id = contact.id
+            draft.recipient_telegram_id = contact.telegram_id
+            draft.recipient_name = contact.first_name
+            draft.recipient_username = contact.username
+            draft.status = "PENDING_CONFIRMATION"
+
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🚀 Ha, yuborilsin", callback_data=f"dispatch:send:{draft.draft_id}"),
+                        InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"dispatch:cancel:{draft.draft_id}"),
+                    ]
+                ]
+            )
+
+            card = (
+                f"✅ <b>Kontakt chatdan topildi va bog'landi!</b>\n\n"
+                f"👤 <b>Qabul qiluvchi:</b> {contact.first_name} ({user_disp})\n"
+                f"🆔 <b>Telegram ID:</b> {id_disp}\n\n"
+                f"💬 <b>Yetkaziladigan xabar:</b>\n"
+                f"<i>«{draft.message_text}»</i>\n\n"
+                f"Ushbu xabarni <b>{contact.first_name}</b>ga yuboraymi?\n"
+                f"<i>(«Jo'nat» deb yozing yoki tugmani bosing)</i>"
+            )
+            await message.answer(card, parse_mode="HTML", reply_markup=kb)
+        else:
+            await message.answer(
+                f"✅ <b>Yangi kontakt chatdan muvaffaqiyatli saqlandi!</b>\n\n"
+                f"👤 <b>Ism:</b> {contact.first_name}\n"
+                f"🔹 <b>Username:</b> {user_disp}\n"
+                f"🆔 <b>Telegram ID:</b> {id_disp}\n\n"
+                f"<i>Endi Nargisga: «{contact.first_name}ga falon xabarni yubor» deb buyruq berishingiz mumkin!</i>",
+                parse_mode="HTML",
+            )
+
     return router
 

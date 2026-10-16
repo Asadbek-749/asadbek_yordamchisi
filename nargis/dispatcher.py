@@ -216,11 +216,13 @@ class NargisMessageDispatcher:
         sys_prompt = (
             "Siz Asadbek ustozning xabarlarini tahlil qiluvchi AI tizimisiz.\n"
             "Foydalanuvchi biror shaxsga (tanishi, shogirdi, hamkasbi) Telegram orqali xabar yuborishni buyurdimi yoki buyurmadimi aniqlang.\n"
-            "Faqat quyidagi JSON formatida javob bering, boshqa hech qanday so'z qo'shmang:\n"
+            "MUHIM QOIDALAR:\n"
+            "1. Agar xabarda aniq shaxs ismi yoki @username aytilmagan bo'lsa (masalan: 'Agar vaqting bo'lsa ertaga 6:00dagi guruhimga dars o'tib berishini so'rab yozib yubor'), 'recipient' maydoniga bo'sh satr \"\" yozing! Aslo 'Guruh o'qituvchisi', 'Foydalanuvchi' kabi soxta ismlar to'qimang!\n"
+            "2. Faqat quyidagi JSON formatida javob bering, boshqa hech qanday so'z qo'shmang:\n"
             "{\n"
             '  "is_dispatch": true | false,\n'
             '  "action": "SEND" | "CONFIRM" | "CANCEL" | "STATUS" | "NONE",\n'
-            '  "recipient": "Ism yoki @username",\n'
+            '  "recipient": "Ism yoki @username yoki bo\'sh",\n'
             '  "message": "Yetkazilishi kerak bo\'lgan aniq xabar matni"\n'
             "}"
         )
@@ -315,13 +317,49 @@ class NargisMessageDispatcher:
     ) -> None:
         """Handle new message dispatch command."""
         cleaned_rec = clean_uzbek_recipient(recipient_query)
-        if not cleaned_rec:
-            await message.answer("⚠️ Qabul qiluvchi shaxs aniqlanmadi. Iltimos, kimga yozish kerakligini ko'rsating.")
+        is_generic_or_empty = (
+            not cleaned_rec
+            or cleaned_rec.lower() in [
+                "guruh o'qituvchisi", "guruh foydalanuvchisi", "gap foydalanuvchisi",
+                "foydalanuvchi", "noma'lum", "biri", "kimdir", "user"
+            ]
+        )
+
+        draft_id = uuid.uuid4().hex[:8]
+
+        if is_generic_or_empty:
+            draft = MessageDispatchDraft(
+                draft_id=draft_id,
+                owner_id=owner_id,
+                recipient_query="",
+                message_text=message_text,
+                status="WAITING_INFO",
+                created_at=datetime.datetime.now(datetime.timezone.utc).timestamp(),
+                business_connection_id=business_connection_id,
+            )
+            self._drafts[draft_id] = draft
+            self._last_draft_by_owner[owner_id] = draft_id
+
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="❌ Bekor qilish", callback_data=f"dispatch:cancel:{draft_id}"),
+                    ]
+                ]
+            )
+
+            card = (
+                f"📝 <b>Qoralama xabar tayyorlandi:</b>\n"
+                f"<i>«{message_text}»</i>\n\n"
+                f"Asadbek ustoz, ushbu xabarni <b>KIMGA</b> yuborish kerak?\n\n"
+                f"👉 <b>Eng oson usul:</b> uning sizga yozgan biror xabarini botimizga <b>Forward (Uzatish / Переслать)</b> qilib yuboring — Nargis uni o'zi avtomatik taniydi va xabarni unga yuborishni taklif qiladi!\n"
+                f"👉 Yoki uning ismini ayting (masalan: «Oyattulloga») yoki @username ini yozing."
+            )
+            await message.answer(card, parse_mode="HTML", reply_markup=kb)
             return
 
         # Search for contact in database
         contacts = await self.contact_service.search_contacts(cleaned_rec, limit=5)
-        draft_id = uuid.uuid4().hex[:8]
 
         if contacts:
             best_contact = contacts[0]
@@ -390,9 +428,9 @@ class NargisMessageDispatcher:
             card = (
                 f"🔍 <b>Kontakt qidiruvi:</b> «{cleaned_rec}»\n\n"
                 f"⚠️ Bazangizda <b>«{cleaned_rec}»</b> ismli kontakt topilmadi.\n\n"
-                f"Ushbu xabarni yetkazishim uchun uning Telegram <b>@username</b>ini (masalan: <code>@{cleaned_rec.lower()}</code>) "
-                f"yoki <b>Telegram ID</b>sini yuboring.\n"
-                f"<i>(Yoki u avval botimizga kirib /start bosgan bo'lishi kerak)</i>\n\n"
+                f"Ushbu xabarni yetkazishim uchun:\n"
+                f"1️⃣ <b>Eng oson usul:</b> uning biror xabarini botga <b>Forward (Uzatish / Переслать)</b> qilib yuboring — bot uning ID sini avtomatik oladi;\n"
+                f"2️⃣ Yoki uning Telegram <b>@username</b>ini (masalan: <code>@{cleaned_rec.lower()}</code>) yoxud <b>Telegram ID</b>sini yuboring.\n\n"
                 f"📝 <b>Saqlangan qoralama:</b>\n"
                 f"<i>«{message_text}»</i>"
             )

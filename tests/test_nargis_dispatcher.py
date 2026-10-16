@@ -205,3 +205,28 @@ async def test_dispatcher_flow_contact_missing_then_provided():
     assert handled_corr is True
     draft = dispatcher.get_pending_draft(owner_id)
     assert draft.message_text == "dars soat 19:00 ga ko'chirildi"
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_generic_recipient():
+    contact_svc = NargisContactService()
+    dispatcher = NargisMessageDispatcher(contact_service=contact_svc)
+    owner_id = 5146977644
+
+    mock_bot = MagicMock()
+    mock_msg = MagicMock()
+    mock_msg.answer = AsyncMock()
+
+    # Generic/unspecified recipient
+    await dispatcher._handle_send(
+        message=mock_msg,
+        owner_id=owner_id,
+        recipient_query="Guruh o'qituvchisi",
+        message_text="Agar vaqting bo'lsa dars o'tib ber",
+        bot=mock_bot,
+    )
+    ans = mock_msg.answer.call_args[0][0]
+    assert "Qoralama xabar tayyorlandi" in ans
+    assert "Forward" in ans
+    assert "KIMGA" in ans
+
