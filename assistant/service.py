@@ -582,9 +582,13 @@ class Assistant:
                 if reply and reply.strip() != SKIP_TOKEN:
                     self.history.add(conn, chat_id, role="owner", name="Nargis", text=reply, lang=lang, ts=self.clock())
                     await message.answer(reply)
+                else:
+                    fallback_reply = "Xabaringizni qabul qildim, Asadbek ustoz. Sizga qanday yordam bera olaman?"
+                    self.history.add(conn, chat_id, role="owner", name="Nargis", text=fallback_reply, lang=lang, ts=self.clock())
+                    await message.answer(fallback_reply)
             except Exception as e:
                 logger.error("Owner direct reply generation error: %s", e)
-                await message.answer("Kechirasiz, ustoz, javob tayyorlashda texnik xatolik yuz berdi.")
+                await message.answer(f"Kechirasiz, ustoz, topshiriqni tahlil qilishda texnik muammo yuz berdi: {e}")
             return
 
         # Sender is an external user (student, client, lead, stranger)

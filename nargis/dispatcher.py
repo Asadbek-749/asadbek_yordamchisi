@@ -489,13 +489,15 @@ class NargisMessageDispatcher:
                 parse_mode="HTML",
             )
         elif draft.status == "WAITING_INFO":
+            rec_hint = f"«{draft.recipient_query}»" if draft.recipient_query else "qabul qiluvchi"
             await message.answer(
-                f"⚠️ Xabar hali yuborilmadi, chunki <b>{draft.recipient_query}</b>ning kontakt ma'lumoti (username yoki Telegram ID) kutilmoqda.\n\n"
-                f"Iltimos, uning @username yoki ID sini yozib yuboring.",
+                f"⚠️ Xabar hali yuborilmadi, chunki <b>{rec_hint}</b>ning kontakt ma'lumoti kutilmoqda.\n\n"
+                f"<b>Nega yuborilmadi?</b> Telegram qoidalariga ko'ra bot foydalanuvchiga xabar yetkazishi uchun uning Telegram ID si yoki siz bilan bo'lgan chatidagi 1 ta xabari kerak.\n\n"
+                f"👉 <b>Yechim:</b> uning istalgan 1 ta xabarini botimizga <b>Forward (Uzatish / Переслать)</b> qiling — Nargis uni darhol bog'lab, xabarni yetkazadi!",
                 parse_mode="HTML",
             )
         elif draft.status == "CANCELLED":
-            await message.answer("❌ Ushbu xabar avvalroq bekor qilingan edi.")
+            await message.answer("❌ Ushbu xabar topshirig'i avvalroq bekor qilingan edi. Yangi topshiriq bersangiz, bajaraman!")
 
     async def _handle_correct(self, message: Message, owner_id: int, new_text: str) -> None:
         """Handle 'Yo'q unga shu xabarimni yetkaz: ...'."""

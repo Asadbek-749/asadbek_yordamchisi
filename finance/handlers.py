@@ -276,8 +276,12 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
                     profile = read_profile(Path("profile.md"))
                     sys_prompt = build_owner_copilot_prompt(profile, datetime.datetime.now(datetime.timezone.utc))
                     reply = await ai_generator.generate(sys_prompt, transcription)
-                    if reply:
+                    if reply and reply.strip() != "[SKIP]":
                         await message.answer(f"🤖 <b>Nargis:</b>\n\n{reply}", parse_mode="HTML")
+                    else:
+                        await message.answer("🤖 <b>Nargis:</b>\n\nOvozingizni eshitdim, Asadbek ustoz. Sizga qanday yordam bera olaman?", parse_mode="HTML")
+                else:
+                    await message.answer("🤖 <b>Nargis:</b>\n\nOvozli xabaringiz qabul qilindi, Asadbek ustoz.", parse_mode="HTML")
         except Exception as e:
             logger.error("Failed to process owner voice: %s", e, exc_info=True)
             await status_msg.edit_text(
