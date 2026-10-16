@@ -25,6 +25,8 @@ def build_nargis_owner_router(owner_id: int) -> Router:
     # /messages — so'nggi kiruvchi xabarlar
     # ─────────────────────────────────────────────
     @router.message(is_owner, Command("messages"))
+    @router.message(is_owner, F.text == "📥 Xabarlar")
+    @router.message(is_owner, F.text == "📥 Kiruvchi xabarlar")
     async def cmd_messages(message: Message) -> None:
         messages = await contact_svc.list_all_messages(limit=15)
         if not messages:
@@ -55,6 +57,7 @@ def build_nargis_owner_router(owner_id: int) -> Router:
     # /important — muhim / critical xabarlar
     # ─────────────────────────────────────────────
     @router.message(is_owner, Command("important"))
+    @router.message(is_owner, F.text == "🔥 Muhim xabarlar")
     async def cmd_important(message: Message) -> None:
         messages = await contact_svc.list_important_messages(limit=10)
         if not messages:
@@ -113,6 +116,7 @@ def build_nargis_owner_router(owner_id: int) -> Router:
     # ─────────────────────────────────────────────
     @router.message(is_owner, Command("score"))
     @router.message(is_owner, F.text == "🏆 Intizom bali")
+    @router.message(is_owner, F.text == "🏆 Nargis ball")
     async def cmd_score(message: Message) -> None:
         score, level = await score_svc.get_score(owner_id)
         summary = score_svc.score_summary(score, level)

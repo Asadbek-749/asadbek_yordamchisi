@@ -24,6 +24,10 @@ def main_reply_keyboard() -> ReplyKeyboardMarkup:
             KeyboardButton(text="🔥 Odatlar"),
         ],
         [
+            KeyboardButton(text="📥 Xabarlar"),
+            KeyboardButton(text="🏆 Nargis ball"),
+        ],
+        [
             KeyboardButton(text="📊 Kunlik hisobot"),
             KeyboardButton(text="⚙️ Sozlamalar"),
         ],

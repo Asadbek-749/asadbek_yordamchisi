@@ -63,23 +63,31 @@ def build_router(assistant: Assistant) -> Router:
     )
     async def cmd_owner_start(message: Message) -> None:
         from discipline.keyboards import main_reply_keyboard
-        await message.answer(assistant.start_text(), reply_markup=main_reply_keyboard())
+        await message.answer(
+            assistant.start_text(),
+            parse_mode="HTML",
+            reply_markup=main_reply_keyboard(),
+        )
 
-    # 4. Direct /start from non-owners
+    # 4. Direct /start from non-owners (clients, students, guests)
     @router.message(
         F.chat.type == "private",
         Command("start"),
     )
     async def cmd_other_start(message: Message) -> None:
         await message.answer(
-            "Assalomu alaykum! Bu shaxsiy yordamchi bot bo'lib, faqat o'z egasi uchun ishlaydi. "
-            "Bu yerda to'g'ridan-to'g'ri suhbatlashib bo'lmaydi. Iltimos, egasiga shaxsiy akkaunti orqali yozing."
+            "🌸 <b>Assalomu alaykum!</b>\n\n"
+            "Men <b>Asadbek ustozning shaxsiy AI assistentiman</b>. Ismim <b>Nargis</b> 🤖\n\n"
+            "Asadbek ustoz hozir darsda yoki ish bilan band bo'lishlari mumkin. "
+            "Sizga qanday yordam bera olaman?\n\n"
+            "💬 <i>(Kurslar, konsultatsiyalar, hamkorlik yoki boshqa savollaringiz bo'lsa, "
+            "bemalol yozing. Men xabaringizni ustozga darhol yetkazaman!)</i>",
+            parse_mode="HTML",
         )
 
-    # 5. Direct messages from non-owners: silently ignored
+    # 5. Direct messages from users or owner (not caught by commands)
     @router.message(F.chat.type == "private")
-    async def handle_other_private(message: Message) -> None:
-        # Silently ignore
-        pass
+    async def handle_direct_private(message: Message) -> None:
+        await assistant.on_direct_private_message(message.bot, message)
 
     return router

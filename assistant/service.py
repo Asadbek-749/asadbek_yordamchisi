@@ -512,45 +512,134 @@ class Assistant:
             f"Active chats in history: {self.history.chat_count()}"
         )
 
+    async def on_direct_private_message(self, bot: Any, message: Any) -> None:
+        """Handle incoming direct private message sent to the bot by a user or the owner."""
+        from_user = message.from_user
+        if not from_user or getattr(from_user, "is_bot", False):
+            return
+
+        chat_id = message.chat.id
+        from_id = from_user.id
+        raw_text = describe_message(message)
+        if not raw_text:
+            return
+
+        is_owner = (from_id == self.settings.owner_id)
+        sender_name = getattr(from_user, "full_name", None) or getattr(from_user, "first_name", None) or "User"
+        sender_username = getattr(from_user, "username", None)
+        conn = f"direct_{chat_id}"
+
+        # If sender is the owner, Nargis acts as direct personal copilot
+        if is_owner:
+            lang = detect_language(raw_text) or "uz"
+            self.history.add(conn, chat_id, role="other", name="Asadbek", text=raw_text, lang=lang, ts=self.clock())
+            profile = read_profile(self.settings.profile_path)
+            now_dt = datetime.fromtimestamp(self.clock(), tz=timezone.utc)
+            from assistant.prompts import build_owner_copilot_prompt
+            sys_prompt = build_owner_copilot_prompt(profile, now_dt)
+            user_prompt = build_user_prompt(self.history.get(conn, chat_id), language=lang)
+            try:
+                reply = await self.generator.generate(sys_prompt, user_prompt)
+                if reply and reply.strip() != SKIP_TOKEN:
+                    self.history.add(conn, chat_id, role="owner", name="Nargis", text=reply, lang=lang, ts=self.clock())
+                    await message.answer(reply)
+            except Exception as e:
+                logger.error("Owner direct reply generation error: %s", e)
+                await message.answer("Kechirasiz, ustoz, javob tayyorlashda texnik xatolik yuz berdi.")
+            return
+
+        # Sender is an external user (student, client, lead, stranger)
+        lang = detect_language(raw_text) or self.history.last_language(conn, chat_id) or "uz"
+        self.history.add(conn, chat_id, role="other", name=sender_name, text=raw_text, lang=lang, ts=self.clock())
+
+        # 1. Nargis classify & lead intake
+        classification = None
+        if self._nargis_agent is not None:
+            try:
+                classification = await self._nargis_agent.process_and_classify(
+                    message_text=raw_text,
+                    sender_name=sender_name,
+                    sender_username=sender_username,
+                    sender_telegram_id=from_id,
+                    connection_id="direct",
+                    chat_id=chat_id,
+                )
+                logger.info(
+                    "Nargis direct classify: from=%s intent=%s urgency=%s score=%d",
+                    sender_name,
+                    classification.primary_intent,
+                    classification.urgency,
+                    classification.importance_score,
+                )
+            except Exception as _err:
+                logger.warning("Nargis direct classification error: %s", _err)
+
+        # 2. Notify owner if high or critical
+        if self._nargis_agent is not None and classification is not None and self.settings.owner_id:
+            try:
+                await self._nargis_agent.send_owner_notification(
+                    bot=bot,
+                    classification=classification,
+                    sender_name=sender_name,
+                    sender_username=sender_username,
+                    message_text=raw_text,
+                )
+            except Exception as _err:
+                logger.warning("Nargis direct owner notify error: %s", _err)
+
+        # 3. Generate response as Nargis
+        profile = read_profile(self.settings.profile_path)
+        now_dt = datetime.fromtimestamp(self.clock(), tz=timezone.utc)
+        sys_prompt = build_system_prompt(profile, now_dt)
+        user_prompt = build_user_prompt(self.history.get(conn, chat_id), language=lang)
+
+        try:
+            reply = await self.generator.generate(sys_prompt, user_prompt)
+        except Exception as err:
+            logger.error("Nargis direct generation error: %s", err)
+            reply = "Assalomu alaykum! Xabaringiz qabul qilindi. Asadbek ustozga yetkazaman, tez orada javob beradilar."
+
+        # 4. Safety validation
+        if self._nargis_agent is not None and reply:
+            reply = self._nargis_agent.validate_reply(reply)
+
+        if not reply or reply.strip() == SKIP_TOKEN:
+            reply = "Xabaringiz qabul qilindi. Asadbek ustozga yetkazaman, tez orada javob beramiz."
+
+        # 5. Send reply to user
+        try:
+            self.history.add(conn, chat_id, role="owner", name="Nargis", text=reply, lang=lang, ts=self.clock())
+            await message.answer(reply)
+        except Exception as e:
+            logger.error("Failed to send direct reply to %d: %s", chat_id, e)
+
     def start_text(self) -> str:
         """Return detailed welcoming and setup guide in Uzbek for the owner."""
         if self.settings.auto_send:
-            mode_str = "AUTO-SEND (xabarlar avtomatik yuboriladi)"
+            mode_str = "AUTO-SEND (avtomatik yuboriladi)"
         else:
-            mode_str = "PREVIEW (javoblar faqat logda ko'rinadi, yuborilmaydi)"
+            mode_str = "PREVIEW (faqat logda ko'rinadi)"
 
         state_str = "Pauzada" if self.state.is_paused() else "Faol ishlamoqda"
 
         return (
-            f"Assalomu alaykum! Men sizning Telegram Business shaxsiy assistentingizman.\n\n"
-            f"📌 Hozirgi holat:\n"
+            f"🌸 <b>Assalomu alaykum, Asadbek ustoz!</b>\n\n"
+            f"Men sizning shaxsiy AI assistentingiz — <b>Nargis</b>man.\n\n"
+            f"📌 <b>Hozirgi holat:</b>\n"
             f"• Rejim: {mode_str}\n"
             f"• Holat: {state_str}\n\n"
-            f"🔗 Botni akkauntingizga ulash:\n"
-            f"1. Telegram sozlamalariga kiring (Settings).\n"
-            f"2. 'Telegram Business' bo'limini oching.\n"
-            f"3. 'Chatbots' bandiga kiring (Telegram Premium kerak bo'ladi).\n"
-            f"4. Ushbu botning username'ini kiriting.\n"
-            f"5. Bot qaysi chatlarni ko'rishini tanlang va javob berish (reply) ruxsatini yoqing.\n\n"
-            f"⚙️ Assistent buyruqlari:\n"
-            f"/pause - Botni vaqtincha to'xtatish (javob tayyorlamaydi)\n"
-            f"/resume - Botni qayta ishga tushirish (pauza va limitlarni tozalaydi)\n"
-            f"/status - Botning hozirgi holati va statistikasi\n\n"
-            f"🎯 AI Intizom & Hosildorlik buyruqlari:\n"
-            f"/discipline - Asosiy intizom boshqaruv paneli\n"
-            f"/today - Bugungi reja va vazifalar\n"
-            f"/addtask - Yangi vazifa qo'shish\n"
-            f"/done - Vazifani yakunlangan deb belgilash\n"
-            f"/focus - Fokus (Pomodoro) sessiyasi\n"
-            f"/habits - Kundalik odatlar nazorati\n"
-            f"/report - Kunlik intizom hisoboti\n"
-            f"/week - Haftalik statistika va AI tavsiyalar\n"
-            f"/settings - Eslatmalar va kun tartibi sozlamalari\n\n"
-            f"💡 Muhim eslatmalar:\n"
-            f"• O'zingiz biror chatga yozsangiz, bot {self.settings.owner_takeover_minutes} daqiqa davomida u chatga aralashmaydi.\n"
-            f"• Bot pul, qarz, uchrashuv yoki shaxsiy ma'lumotlarni hech qachon tasdiqlamaydi va bermaydi.\n"
-            f"• Bot yaxshi ishlashi uchun `profile.md` faylini o'zingiz haqingizdagi ma'lumotlar bilan to'ldiring.\n"
-            f"• Javoblar sizga ma'qul kelsa, sozlamalarda `AUTO_SEND=true` qilib avtomatik yuborishni yoqishingiz mumkin."
+            f"📥 <b>Nargis Inbox & Boshqaruv:</b>\n"
+            f"/messages — Kelgan barcha xabarlar ro'yxati\n"
+            f"/important — Muhim va tezkor murojaatlar\n"
+            f"/contacts — Kontaktlar va leadlar bazasi\n"
+            f"/score — Kunlik Nargis intizom bali (100 dan boshlanadi)\n\n"
+            f"🎯 <b>Intizom & Hosildorlik paneli:</b>\n"
+            f"/discipline — Asosiy intizom menyusi\n"
+            f"/today — Bugungi reja va vazifalar\n"
+            f"/focus — Pomodoro fokus taymeri\n"
+            f"/habits — Kundalik odatlar nazorati\n"
+            f"/report — Kunlik hisobot\n\n"
+            f"💡 <i>Menga istalgan savol yoki topshiriqni to'g'ridan-to'g'ri yozishingiz mumkin!</i>"
         )
 
 
