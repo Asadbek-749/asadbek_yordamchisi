@@ -287,27 +287,29 @@ class Assistant:
                 else:
                     self.state.set_limit(self.clock() + (self.settings.limit_cooldown_minutes * 60))
                 logger.warning("Claude subscription limit reached: %s", err)
+                provider_label = "Gemini" if self.settings.ai_provider == "gemini" else "Claude"
                 if self.settings.auto_send and self.settings.owner_id:
                     try:
                         await bot.send_message(
                             self.settings.owner_id,
-                            f"⚠️ Claude obuna limiti tugadi: {err}",
+                            f"⚠️ {provider_label} obuna/so'rov limiti tugadi: {err}",
                         )
                     except Exception:
                         pass
                 return self._record_outcome(Outcome.limited)
             except ClaudeError as err:
-                logger.error("Claude generation error: %s", err)
+                logger.error("AI generation error: %s", err)
                 if (
                     self.settings.auto_send
                     and self.settings.owner_id
                     and (self.clock() - self._last_error_notify > 600)
                 ):
                     self._last_error_notify = self.clock()
+                    provider_label = "Gemini API" if self.settings.ai_provider == "gemini" else "Claude CLI"
                     try:
                         await bot.send_message(
                             self.settings.owner_id,
-                            f"⚠️ Claude CLI xatosi: {err}",
+                            f"⚠️ {provider_label} xatosi: {err}",
                         )
                     except Exception:
                         pass

@@ -108,3 +108,65 @@ async def test_gemini_client_invalid_key(monkeypatch):
     client = GeminiClient(api_key="AIzaSyBadKey")
     with pytest.raises(GeminiAuthError):
         await client.generate("sys", "usr")
+
+
+@pytest.mark.asyncio
+async def test_gemini_client_retry_on_503(monkeypatch):
+    responses = [
+        MockResponse(503, {"error": {"code": 503, "message": "High demand"}}),
+        MockResponse(200, {"candidates": [{"content": {"parts": [{"text": "Succeeded after retry"}]}}]}),
+    ]
+
+    class SequentialMockSession:
+        def __init__(self, resps):
+            self._resps = list(resps)
+            self.calls = 0
+
+        def post(self, url: str, params: dict = None, json: dict = None):
+            self.calls += 1
+            if self._resps:
+                return self._resps.pop(0)
+            return MockResponse(500, "Error")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    mock_session = SequentialMockSession(responses)
+    monkeypatch.setattr("aiohttp.ClientSession", lambda **kwargs: mock_session)
+
+    client = GeminiClient(api_key="AIzaSyTestKey123", retry_delay=0.001)
+    result = await client.generate("sys", "usr")
+    assert result == "Succeeded after retry"
+    assert mock_session.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_gemini_client_fallback_model(monkeypatch):
+    class FallbackMockSession:
+        def __init__(self):
+            self.attempted_urls = []
+
+        def post(self, url: str, params: dict = None, json: dict = None):
+            self.attempted_urls.append(url)
+            if "gemini-3.8-flash" in url:
+                return MockResponse(503, {"error": {"code": 503, "message": "High demand"}})
+            # Fallback model succeeds
+            return MockResponse(200, {"candidates": [{"content": {"parts": [{"text": "Fallback reply"}]}}]})
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    mock_session = FallbackMockSession()
+    monkeypatch.setattr("aiohttp.ClientSession", lambda **kwargs: mock_session)
+
+    client = GeminiClient(api_key="AIzaSyTestKey123", model="gemini-3.8-flash", retry_delay=0.001)
+    result = await client.generate("sys", "usr")
+    assert result == "Fallback reply"
+    assert any("gemini-3.8-flash" in u for u in mock_session.attempted_urls)
+    assert any("gemini-3.1-flash-lite" in u or "gemini-3.5" in u for u in mock_session.attempted_urls)
