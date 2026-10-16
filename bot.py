@@ -60,6 +60,17 @@ except ImportError:
     build_finance_router = None  # type: ignore
     FinanceService = None  # type: ignore
 
+# Nargis Mini App router and server
+try:
+    from nargis.webapp_router import build_webapp_router
+    from webapp.server import start_webapp_server, stop_webapp_server
+    _WEBAPP_AVAILABLE = True
+except ImportError:
+    _WEBAPP_AVAILABLE = False
+    build_webapp_router = None  # type: ignore
+    start_webapp_server = None  # type: ignore
+    stop_webapp_server = None  # type: ignore
+
 logger = logging.getLogger("assistant")
 
 
@@ -283,14 +294,38 @@ async def run_bot(settings: Settings) -> None:
             logger.warning("Could not register Finance router: %s", _fin_err)
 
     dp.include_router(discipline_router)
+
+    # Nargis Mini App router (for /webapp command and WebApp data)
+    if _WEBAPP_AVAILABLE:
+        try:
+            webapp_router = build_webapp_router(settings.owner_id, settings.webapp_url)
+            dp.include_router(webapp_router)
+            logger.info("📱 Nargis WebApp router registered.")
+        except Exception as _wa_err:
+            logger.warning("Could not register WebApp router: %s", _wa_err)
+
     dp.include_router(build_router(assistant))
 
 
     discipline_scheduler = DisciplineScheduler(bot, discipline_service, settings.owner_id)
     discipline_scheduler.start()
 
-    port_env = os.environ.get("PORT")
-    health_server = await _start_health_server_if_port(port_env)
+    port_env = os.environ.get("PORT") or os.environ.get("WEBAPP_PORT")
+    webapp_runner = None
+    health_server = None
+    if _WEBAPP_AVAILABLE and port_env:
+        try:
+            p_val = int(port_env)
+            webapp_runner = await start_webapp_server(
+                port=p_val,
+                bot=bot,
+                owner_id=settings.owner_id,
+                data_dir=settings.data_dir,
+            )
+        except Exception as e:
+            logger.warning("Could not start WebApp server on port %s: %s", port_env, e)
+    elif port_env:
+        health_server = await _start_health_server_if_port(port_env)
 
     # Configure Telegram native Menu button with commands
     try:
@@ -314,10 +349,24 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="contacts", description="👥 Kontaktlar va leadlar"),
                 BotCommand(command="addcontact", description="👤 Kontakt qo'shish yoki yangilash"),
                 BotCommand(command="status", description="⚙️ Bot faoliyati va holati"),
+                BotCommand(command="webapp", description="📱 O'rganAilik Qabul Mini App"),
+                BotCommand(command="arizalar", description="🎓 Tushgan arizalar ro'yxati"),
                 BotCommand(command="settings", description="🔧 Kun tartibi sozlamalari"),
             ],
             scope=BotCommandScopeDefault(),
         )
+
+        # Configure Telegram Menu Button for Web App
+        webapp_url = settings.webapp_url or os.environ.get("WEBAPP_URL")
+        if webapp_url:
+            from aiogram.types import MenuButtonWebApp, WebAppInfo
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Qabul Mini App",
+                    web_app=WebAppInfo(url=webapp_url),
+                )
+            )
+            logger.info("📱 Telegram Chat Menu Button set to 'Qabul Mini App' (%s)", webapp_url)
     except Exception as e:
         logger.warning("Could not set bot commands: %s", e)
 
@@ -326,6 +375,8 @@ async def run_bot(settings: Settings) -> None:
     finally:
         discipline_scheduler.stop()
         await close_db()
+        if webapp_runner and _WEBAPP_AVAILABLE:
+            await stop_webapp_server(webapp_runner)
         if health_server:
             health_server.close()
             await health_server.wait_closed()

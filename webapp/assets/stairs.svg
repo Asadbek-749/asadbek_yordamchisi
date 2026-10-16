@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 140" fill="none">
+  <!-- Step 1 (top) -->
+  <polygon points="100,20 140,40 100,60 60,40" fill="#123a22" stroke="#c5a059" stroke-width="2"/>
+  <polygon points="60,40 100,60 100,75 60,55" fill="#0d2b19" stroke="#c5a059" stroke-width="2"/>
+  <polygon points="100,60 140,40 140,55 100,75" fill="#091f12" stroke="#c5a059" stroke-width="2"/>
+  
+  <!-- Step 2 (middle) -->
+  <polygon points="80,50 120,70 80,90 40,70" fill="#154227" stroke="#d4af37" stroke-width="2.2"/>
+  <polygon points="40,70 80,90 80,105 40,85" fill="#0f311c" stroke="#d4af37" stroke-width="2.2"/>
+  <polygon points="80,90 120,70 120,85 80,105" fill="#0b2415" stroke="#d4af37" stroke-width="2.2"/>
+  
+  <!-- Step 3 (bottom) -->
+  <polygon points="60,80 100,100 60,120 20,100" fill="#1a5231" stroke="#ecd58c" stroke-width="2.5"/>
+  <polygon points="20,100 60,120 60,135 20,115" fill="#133d24" stroke="#ecd58c" stroke-width="2.5"/>
+  <polygon points="60,120 100,100 100,115 60,135" fill="#0e2c1a" stroke="#ecd58c" stroke-width="2.5"/>
+
+  <!-- Glow and sparkle -->
+  <circle cx="100" cy="20" r="3" fill="#ffe082"/>
+  <circle cx="140" cy="40" r="2" fill="#ffd54f"/>
+</svg>

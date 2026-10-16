@@ -75,6 +75,20 @@ def build_router(assistant: Assistant) -> Router:
         Command("start"),
     )
     async def cmd_other_start(message: Message) -> None:
+        reply_markup = None
+        if assistant.settings.webapp_url:
+            from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+            reply_markup = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="🚀 Qabul Mini App-ni ochish",
+                            web_app=WebAppInfo(url=assistant.settings.webapp_url),
+                        )
+                    ]
+                ]
+            )
+
         await message.answer(
             "🌸 <b>Assalomu alaykum!</b>\n\n"
             "Men <b>Asadbek ustozning shaxsiy yordamchi boti — AI assistentiman</b>. Ismim <b>Nargis</b> 🤖\n\n"
@@ -83,6 +97,7 @@ def build_router(assistant: Assistant) -> Router:
             "💬 <i>(Kurslar, konsultatsiyalar, hamkorlik yoki boshqa savollaringiz bo'lsa, "
             "bemalol yozing. Men xabaringizni ustozga darhol yetkazaman!)</i>",
             parse_mode="HTML",
+            reply_markup=reply_markup,
         )
 
     # 5. Direct messages from users or owner (not caught by commands)

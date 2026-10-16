@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>O'rganAilik | Raqamli San'at & Qabul 2026</title>
+  
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Top Hero Header (Matching Screenshot) -->
+    <header class="hero-header">
+      <div class="top-nav">
+        <div class="brand-wrapper">
+          <img src="assets/emblem.svg" alt="Emblem" class="emblem-img">
+          <div class="brand-info">
+            <h1>O'rgan<span>Ai</span>lik</h1>
+            <span class="brand-subtitle">RAQAMLI SAN'AT / QABUL 2026</span>
+          </div>
+        </div>
+        <div class="step-counter" id="stepCounterBadge">01 — 02</div>
+      </div>
+
+      <div class="hero-content">
+        <div class="hero-text">
+          <span class="hero-badge">YANGI IMKONIYATLAR SARI</span>
+          <h2 class="hero-title">Ijodingizning<br>yangi bosqichi.</h2>
+          <p class="hero-description">
+            Sun'iy intellektni o'rganing.<br>
+            G'oyangizni haqiqiy loyihaga aylantiring.
+          </p>
+        </div>
+        <div class="hero-visual">
+          <img src="assets/stairs.svg" alt="3D Stairs Step">
+        </div>
+      </div>
+
+      <div class="hero-footer-bar">
+        <span>2 OKTABR</span>
+        <span>2026 · Kurs boshlanishi</span>
+      </div>
+    </header>
+
+    <!-- Main Content Area with Views -->
+    <main class="main-content">
+
+      <!-- ========================================== -->
+      <!-- TAB 1: BOSH SAHIFA (HOME)                 -->
+      <!-- ========================================== -->
+      <section id="view-home" class="view-section active">
+        <!-- Next Step CTA Banner -->
+        <div class="cta-banner" onclick="switchTab('apply')">
+          <div>
+            <span class="cta-tag">KEYINGI QADAM</span>
+            <div class="cta-title">Qabulni anketadan boshlang</div>
+            <div class="cta-sub">Anketa → Ijodiy ish</div>
+          </div>
+          <button class="cta-button" type="button">
+            Davom etish →
+          </button>
+        </div>
+
+        <!-- 01, 02, 03 Navigation Cards -->
+        <div class="nav-card-list">
+          <!-- 01 Ariza topshirish -->
+          <div class="nav-card" onclick="switchTab('apply')">
+            <div class="card-left">
+              <div class="number-badge">01</div>
+              <div class="card-text">
+                <h3>Ariza topshirish</h3>
+                <p>Anketa va ijodiy ish</p>
+              </div>
+            </div>
+            <div class="chevron-icon">›</div>
+          </div>
+
+          <!-- 02 Arizam holati -->
+          <div class="nav-card" onclick="switchTab('status')">
+            <div class="card-left">
+              <div class="number-badge">02</div>
+              <div class="card-text">
+                <h3>Arizam holati</h3>
+                <p>Topshirish bosqichlari va qabul qarori</p>
+              </div>
+            </div>
+            <div class="chevron-icon">›</div>
+          </div>
+
+          <!-- 03 Kurs va yordam -->
+          <div class="nav-card" onclick="switchTab('courses')">
+            <div class="card-left">
+              <div class="number-badge">03</div>
+              <div class="card-text">
+                <h3>Kurs va yordam</h3>
+                <p>Kurs haqida ma'lumot va aloqa</p>
+              </div>
+            </div>
+            <div class="chevron-icon">›</div>
+          </div>
+        </div>
+
+        <!-- Telegram User Quick Welcome -->
+        <div class="info-card" id="userWelcomeCard" style="background:#ffffff; border-radius:16px; padding:16px; border:1px solid rgba(18,45,27,0.08); font-size:12px; color:#5e6f64;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <div style="font-size:20px;">✨</div>
+            <div>
+              <span id="welcomeUserName" style="font-weight:700; color:#121f17; font-size:13px;">Xush kelibsiz!</span>
+              <div>Nargis AI orqali arizangiz to'g'ridan-to'g'ri qabul komissiyasiga yetkaziladi.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 2: ARIZA TOPSHIRISH (APPLY)            -->
+      <!-- ========================================== -->
+      <section id="view-apply" class="view-section">
+        <div class="section-header">
+          <h2>Ariza topshirish</h2>
+          <p>Qabul 2026 mavsumi uchun rasmiy anketani to'ldiring</p>
+        </div>
+
+        <div class="form-card" id="applyFormContainer">
+          <form id="applicationForm" onsubmit="submitApplication(event)">
+            <div class="form-group">
+              <label for="fullName">To'liq ism-familiyangiz</label>
+              <input type="text" id="fullName" placeholder="Masalan: Sardor Aliyev" required>
+            </div>
+
+            <div class="form-group">
+              <label for="phoneNumber">Telefon raqamingiz</label>
+              <input type="tel" id="phoneNumber" placeholder="+998 (90) 123-45-67" required>
+            </div>
+
+            <div class="form-group">
+              <label for="courseSelect">Qiziqqan yo'nalishingiz</label>
+              <select id="courseSelect" required>
+                <option value="ai-pro">Sun'iy intellekt & Prompt Engineering (AI Pro)</option>
+                <option value="vibe-coding">Vibe Coding & Agentic AI Dasturlash</option>
+                <option value="nargis-executive">Nargis AI Executive (Moliyaviy intizom & Bot)</option>
+                <option value="digital-art">Raqamli San'at & Generative Dizayn</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="experienceLevel">Tajribangiz darajasi</label>
+              <select id="experienceLevel">
+                <option value="beginner">Noldan / Boshlang'ich</option>
+                <option value="intermediate">O'rta (IT asoslarini bilaman)</option>
+                <option value="advanced">Amaliyotchi / Dasturchi</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="creativeGoal">Maqsadingiz yoki ijodiy g'oyangiz</label>
+              <textarea id="creativeGoal" rows="3" placeholder="Ushbu kursda qanday loyiha yaratmoqchisiz?"></textarea>
+            </div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">
+              <span>Arizani yuborish</span>
+              <span>→</span>
+            </button>
+          </form>
+        </div>
+
+        <!-- Application Success View -->
+        <div id="applySuccessCard" style="display:none; background:#ffffff; border-radius:20px; padding:24px; text-align:center; border:1px solid #d4af37; box-shadow:0 8px 24px rgba(9,38,21,0.08);">
+          <div style="font-size:42px; margin-bottom:12px;">🎉</div>
+          <h3 style="font-family:var(--font-serif); font-size:20px; color:#082615; margin-bottom:8px;">Arizangiz muvaffaqiyatli qabul qilindi!</h3>
+          <p style="font-size:12.5px; color:#5e6f64; margin-bottom:16px;">
+            Arizangiz Nargis AI tizimiga kiritildi va Asadbek Ustozga yetkazildi. Arizangiz kodi: <strong id="appIdBadge" style="color:#082615; background:#edebe2; padding:3px 8px; border-radius:6px;"></strong>
+          </p>
+          <button class="cta-button" onclick="switchTab('status')" style="margin:0 auto;">
+            Arizam holatini tekshirish →
+          </button>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 3: ARIZAM HOLATI (STATUS)             -->
+      <!-- ========================================== -->
+      <section id="view-status" class="view-section">
+        <div class="section-header">
+          <h2>Arizam holati</h2>
+          <p>Qabul jarayoni va tekshiruv bosqichlari</p>
+        </div>
+
+        <!-- Lookup form -->
+        <div class="form-card" style="margin-bottom:16px;">
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="statusPhoneSearch" placeholder="Telefon yoki ariza kodi..." style="flex:1; padding:10px 14px; font-size:13px; border:1px solid rgba(18,45,27,0.16); border-radius:8px;">
+            <button class="cta-button" onclick="lookupApplication()" style="padding:10px 14px;">Izlash</button>
+          </div>
+        </div>
+
+        <!-- Status Timeline -->
+        <div id="statusTimeline" class="form-card" style="padding:20px 18px;">
+          <div style="font-size:13px; font-weight:700; color:#082615; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+            <span id="statusAppName">Ariza holati</span>
+            <span style="font-size:10px; background:#d4af37; color:#082615; font-weight:800; padding:2px 8px; border-radius:12px;" id="statusBadge">KO'RIB CHIQILMOQDA</span>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:16px; position:relative;">
+            <!-- Step 1 -->
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+              <div style="width:24px; height:24px; border-radius:50%; background:#082615; color:#fff; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;">✓</div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:#082615;">1. Anketa qabul qilindi</div>
+                <div style="font-size:11px; color:#5e6f64;">Ma'lumotlar to'liq qayd etildi va tizimga kiritildi</div>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div style="display:flex; align-items:flex-start; gap:12px;">
+              <div style="width:24px; height:24px; border-radius:50%; background:#d4af37; color:#082615; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;">2</div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:#082615;">2. Tahlil va ko'rib chiqish</div>
+                <div style="font-size:11px; color:#5e6f64;">Qabul komissiyasi sizning ijodiy maqsadingizni o'rganmoqda</div>
+              </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div style="display:flex; align-items:flex-start; gap:12px; opacity:0.6;">
+              <div style="width:24px; height:24px; border-radius:50%; background:#edebe2; color:#5e6f64; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; flex-shrink:0;">3</div>
+              <div>
+                <div style="font-size:13px; font-weight:700; color:#082615;">3. Suhbat va yakuniy qaror</div>
+                <div style="font-size:11px; color:#5e6f64;">Mentor bilan 1-on-1 suhbat va guruhga biriktirish</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 4: KURSLAR VA YORDAM (COURSES)        -->
+      <!-- ========================================== -->
+      <section id="view-courses" class="view-section">
+        <div class="section-header">
+          <h2>Kurslar va Yordam</h2>
+          <p>O'rganAilik platformasining premium dasturlari</p>
+        </div>
+
+        <div class="course-card">
+          <div class="course-header">
+            <span class="course-tag">FLAGSHIP · 2026</span>
+            <span style="font-family:var(--font-serif); font-size:13px; font-weight:700; color:#d4af37;">3 oy</span>
+          </div>
+          <h3 class="course-title">Sun'iy intellekt & Prompt Engineering</h3>
+          <p class="course-desc">
+            LLM modellarini professional boshqarish, Claude, ChatGPT, Midjourney va agentic pipeline tuzish san'ati.
+          </p>
+          <div class="course-footer">
+            <span class="course-teacher">Ustoz: Asadbek</span>
+            <button class="course-apply-btn" onclick="selectCourseAndApply('ai-pro')">Tanlash</button>
+          </div>
+        </div>
+
+        <div class="course-card">
+          <div class="course-header">
+            <span class="course-tag">AMALIY · DASTURLASH</span>
+            <span style="font-family:var(--font-serif); font-size:13px; font-weight:700; color:#d4af37;">2 oy</span>
+          </div>
+          <h3 class="course-title">Vibe Coding & Agentic AI Dasturlash</h3>
+          <p class="course-desc">
+            AI agentlar bilan birga to'liq veb va Telegram ilovalar yaratish. G'oyadan tayyor mahsulotgacha.
+          </p>
+          <div class="course-footer">
+            <span class="course-teacher">Mentorlar jamoasi</span>
+            <button class="course-apply-btn" onclick="selectCourseAndApply('vibe-coding')">Tanlash</button>
+          </div>
+        </div>
+
+        <div class="course-card">
+          <div class="course-header">
+            <span class="course-tag">EXECUTIVE COACH</span>
+            <span style="font-family:var(--font-serif); font-size:13px; font-weight:700; color:#d4af37;">Individual</span>
+          </div>
+          <h3 class="course-title">Nargis AI: Moliyaviy intizom & Avtomatlashtirish</h3>
+          <p class="course-desc">
+            Shaxsiy biznesingiz va byudjetingizni AI agent orqali nazorat qilish tizimini yo'lga qo'yish.
+          </p>
+          <div class="course-footer">
+            <span class="course-teacher">Asadbek & Nargis AI</span>
+            <button class="course-apply-btn" onclick="selectCourseAndApply('nargis-executive')">Tanlash</button>
+          </div>
+        </div>
+
+        <!-- Help Card -->
+        <div class="form-card" style="margin-top:20px; background:#082615; color:#ffffff; border-color:#d4af37;">
+          <h3 style="font-family:var(--font-serif); font-size:17px; color:#f7e7b4; margin-bottom:6px;">Savollaringiz bormi?</h3>
+          <p style="font-size:12px; color:#cfd8d3; margin-bottom:12px; line-height:1.4;">
+            Nargis AI har doim xizmatingizda. Savolingizni to'g'ridan-to'g'ri bot orqali yoki shaxsiy xabar yuborish orqali bering.
+          </p>
+          <button class="cta-button" onclick="contactSupport()" style="background:#d4af37; color:#082615; font-weight:700;">
+            Botda savol berish 💬
+          </button>
+        </div>
+      </section>
+
+      <!-- ========================================== -->
+      <!-- TAB 5: USTOZ PANELI (OWNER VIEW)          -->
+      <!-- ========================================== -->
+      <section id="view-owner" class="view-section">
+        <div class="owner-dashboard">
+          <div class="owner-badge">👑 ASADBEK USTOZ DASHBOARD</div>
+          
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-label">Moliyaviy Balans</div>
+              <div class="stat-value" id="dashBalance">$12,450</div>
+              <div class="stat-sub">+18% bu oy</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-label">Intizom Ko'rsatkichi</div>
+              <div class="stat-value" id="dashDiscipline">94 / 100</div>
+              <div class="stat-sub">🔥 Qat'iy rejimda</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-label">Tushgan Arizalar</div>
+              <div class="stat-value" id="dashAppCount">12 ta</div>
+              <div class="stat-sub">3 ta kutilmoqda</div>
+            </div>
+
+            <div class="stat-box">
+              <div class="stat-label">Nargis AI Xolati</div>
+              <div class="stat-value" style="color:#0f8a3c;">Faol 🟢</div>
+              <div class="stat-sub">Avto-dispatcher OK</div>
+            </div>
+          </div>
+
+          <div style="font-size:13px; font-weight:700; color:#082615; margin:14px 0 10px 0; display:flex; justify-content:space-between; align-items:center;">
+            <span>So'nggi kelgan arizalar</span>
+            <button onclick="refreshDashboard()" style="background:none; border:none; font-size:11px; color:#d4af37; font-weight:700; cursor:pointer;">Yangilash 🔄</button>
+          </div>
+
+          <div id="ownerApplicationsList" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Applications rendered via JS -->
+            <div style="background:#fff; border-radius:10px; padding:10px 12px; border:1px solid rgba(18,45,27,0.08); font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <strong style="color:#082615;">Azizbek Qodirov</strong>
+                <div style="color:#5e6f64;">AI Pro · +998 (97) 765-43-21</div>
+              </div>
+              <span style="font-size:10px; background:#d4af37; color:#082615; font-weight:800; padding:2px 6px; border-radius:6px;">YANGI</span>
+            </div>
+            <div style="background:#fff; border-radius:10px; padding:10px 12px; border:1px solid rgba(18,45,27,0.08); font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <strong style="color:#082615;">Malika Umarova</strong>
+                <div style="color:#5e6f64;">Vibe Coding · +998 (93) 111-22-33</div>
+              </div>
+              <span style="font-size:10px; background:#082615; color:#fff; font-weight:800; padding:2px 6px; border-radius:6px;">SUHBATDA</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom Navigation Bar (Matching Screenshot) -->
+    <nav class="bottom-nav">
+      <!-- Bosh sahifa -->
+      <button class="nav-item active" data-tab="home" onclick="switchTab('home')">
+        <span class="nav-icon">⌂</span>
+        <span>Bosh sahifa</span>
+      </button>
+
+      <!-- Qabul -->
+      <button class="nav-item" data-tab="apply" onclick="switchTab('apply')">
+        <span class="nav-icon">≡</span>
+        <span>Qabul</span>
+      </button>
+
+      <!-- Arizam holati -->
+      <button class="nav-item" data-tab="status" onclick="switchTab('status')">
+        <span class="nav-icon">◇</span>
+        <span>Arizam holati</span>
+      </button>
+
+      <!-- Yordam -->
+      <button class="nav-item" data-tab="courses" onclick="switchTab('courses')">
+        <span class="nav-icon">○</span>
+        <span>Yordam</span>
+      </button>
+
+      <!-- Ustoz Paneli (Only shown or highlighted for Asadbek) -->
+      <button class="nav-item" id="ownerTabBtn" data-tab="owner" onclick="switchTab('owner')" style="display:none;">
+        <span class="nav-icon">★</span>
+        <span>Ustoz</span>
+        <span class="owner-indicator"></span>
+      </button>
+    </nav>
+
+    <!-- Floating Toast Notice -->
+    <div id="toastNotice" class="toast-notice">
+      <span id="toastIcon">✨</span>
+      <span id="toastMessage">Xabar</span>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

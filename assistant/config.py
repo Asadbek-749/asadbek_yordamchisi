@@ -28,6 +28,7 @@ SETTING_KEYS: Tuple[str, ...] = (
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
     "AI_PROVIDER",
+    "WEBAPP_URL",
 )
 
 ALLOWED_EFFORTS = {"low", "medium", "high", "xhigh", "max"}
@@ -60,6 +61,7 @@ class Settings:
     gemini_api_key: Optional[str] = field(default=None, repr=False)
     gemini_model: str = "gemini-3.1-flash-lite"
     ai_provider: str = "claude"
+    webapp_url: Optional[str] = None
 
     @property
     def claude_auth_mode(self) -> str:
@@ -294,6 +296,9 @@ def load_settings(
     else:
         profile_path = (base_dir / "profile.md").resolve()
 
+    raw_webapp_url = _get_str("WEBAPP_URL")
+    webapp_url = raw_webapp_url if raw_webapp_url else None
+
     return Settings(
         bot_token=bot_token,
         owner_id=owner_id,
@@ -312,4 +317,5 @@ def load_settings(
         gemini_api_key=gemini_api_key,
         gemini_model=gemini_model,
         ai_provider=ai_provider,
+        webapp_url=webapp_url,
     )
