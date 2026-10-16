@@ -129,6 +129,33 @@ def test_bot_settings_from_process_env(monkeypatch):
     assert "OWNER_ID" not in os.environ
 
 
+def test_gemini_with_dummy_or_missing_claude_token():
+    # When using Gemini, invalid Claude token or placeholder strings ("none", quotes) shouldn't crash
+    settings = load_settings(
+        source={
+            "TELEGRAM_BOT_TOKEN": "123:ABC",
+            "OWNER_ID": "12345",
+            "AI_PROVIDER": "gemini",
+            "GEMINI_API_KEY": "AIzaSySecretKey",
+            "CLAUDE_CODE_OAUTH_TOKEN": "some_random_string_or_placeholder",
+        }
+    )
+    assert settings.ai_provider == "gemini"
+    assert settings.gemini_api_key == "AIzaSySecretKey"
+    assert settings.claude_oauth_token is None
+
+    # Quoted empty or "none" in Claude token is cleanly handled
+    settings_none = load_settings(
+        source={
+            "TELEGRAM_BOT_TOKEN": "123:ABC",
+            "OWNER_ID": "12345",
+            "CLAUDE_CODE_OAUTH_TOKEN": '"none"',
+        },
+        require_telegram=False,
+    )
+    assert settings_none.claude_oauth_token is None
+
+
 def test_detect_language():
     assert detect_language("Salom, qalesan?") == "uz"
     assert detect_language("Bugun bo'shmisan?") == "uz"

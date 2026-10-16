@@ -20,7 +20,8 @@ async def test_daily_metrics_calculation(test_db):
     async with test_db() as session:
         repo = DisciplineRepository(session)
         user_id = 999
-        today = datetime.date(2026, 10, 15)
+        from zoneinfo import ZoneInfo
+        today = datetime.datetime.now(ZoneInfo("Asia/Tashkent")).date()
 
         # 1. Add tasks
         t1 = await repo.create_task(user_id, TaskCreate(title="Task 1"))

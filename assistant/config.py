@@ -195,36 +195,60 @@ def load_settings(
             "Must be one of: true, false, 1, 0, yes, no, on, off."
         )
 
-    # 4. CLAUDE_CODE_OAUTH_TOKEN
+    # 4. Gemini and AI Provider settings
+    raw_gemini_key = _get_str("GEMINI_API_KEY")
+    gemini_api_key = raw_gemini_key if raw_gemini_key else None
+    gemini_model = _get_str("GEMINI_MODEL") or "gemini-3.1-flash-lite"
+
+    raw_provider = _get_str("AI_PROVIDER")
+    if raw_provider:
+        ai_provider = raw_provider.lower()
+    elif gemini_api_key:
+        ai_provider = "gemini"
+    else:
+        ai_provider = "claude"
+
+    # 5. CLAUDE_CODE_OAUTH_TOKEN
     raw_oauth = raw.get("CLAUDE_CODE_OAUTH_TOKEN")
     oauth_token: Optional[str] = None
     if raw_oauth is not None:
-        token_str = str(raw_oauth).strip()
-        if token_str:
-            if token_str.startswith("sk-ant-api"):
-                raise ConfigError(
-                    f"CLAUDE_CODE_OAUTH_TOKEN in {source_label} is an API key (sk-ant-api...), "
-                    "not a subscription token. Run 'claude setup-token' to obtain an OAuth token."
-                )
-            if any(c.isspace() for c in token_str):
-                raise ConfigError(
-                    f"CLAUDE_CODE_OAUTH_TOKEN in {source_label} contains whitespace. "
-                    "Ensure the token is pasted on a single uninterrupted line."
-                )
-            if not token_str.startswith("sk-ant-oat"):
-                raise ConfigError(
-                    f"CLAUDE_CODE_OAUTH_TOKEN in {source_label} must start with 'sk-ant-oat...'."
-                )
-            oauth_token = token_str
+        token_str = str(raw_oauth).strip().strip('"\'')
+        if token_str.lower() in ("none", "null", "false", "undefined", '""', "''"):
+            token_str = ""
 
-    # 5. CLAUDE_BIN
+        if token_str:
+            if ai_provider == "gemini":
+                # When using Gemini, do not crash if CLAUDE_CODE_OAUTH_TOKEN is invalid or a placeholder
+                if token_str.startswith("sk-ant-oat"):
+                    oauth_token = token_str
+                elif not gemini_api_key and not token_str.startswith("sk-ant-"):
+                    # Helpful fallback: User might have accidentally pasted Gemini key into CLAUDE_CODE_OAUTH_TOKEN
+                    gemini_api_key = token_str
+            else:
+                if token_str.startswith("sk-ant-api"):
+                    raise ConfigError(
+                        f"CLAUDE_CODE_OAUTH_TOKEN in {source_label} is an API key (sk-ant-api...), "
+                        "not a subscription token. Run 'claude setup-token' to obtain an OAuth token."
+                    )
+                if any(c.isspace() for c in token_str):
+                    raise ConfigError(
+                        f"CLAUDE_CODE_OAUTH_TOKEN in {source_label} contains whitespace. "
+                        "Ensure the token is pasted on a single uninterrupted line."
+                    )
+                if not token_str.startswith("sk-ant-oat"):
+                    raise ConfigError(
+                        f"CLAUDE_CODE_OAUTH_TOKEN in {source_label} must start with 'sk-ant-oat...'."
+                    )
+                oauth_token = token_str
+
+    # 6. CLAUDE_BIN
     raw_bin = _get_str("CLAUDE_BIN")
     claude_bin = _resolve_claude_bin(raw_bin)
 
-    # 6. CLAUDE_MODEL
+    # 7. CLAUDE_MODEL
     claude_model = _get_str("CLAUDE_MODEL")
 
-    # 7. CLAUDE_EFFORT
+    # 8. CLAUDE_EFFORT
     raw_effort = (_get_str("CLAUDE_EFFORT") or "low").lower()
     if raw_effort not in ALLOWED_EFFORTS:
         raise ConfigError(
@@ -233,7 +257,7 @@ def load_settings(
         )
     claude_effort = raw_effort
 
-    # 8. Numeric settings
+    # 9. Numeric settings
     def _parse_int(key: str, default: int, min_val: int) -> int:
         val = raw.get(key)
         if val is None or str(val).strip() == "":
@@ -253,7 +277,7 @@ def load_settings(
     owner_takeover_minutes = _parse_int("OWNER_TAKEOVER_MINUTES", 15, 0)
     history_limit = _parse_int("HISTORY_LIMIT", 30, 1)
 
-    # 9. Paths
+    # 10. Paths
     raw_data_dir = _get_str("DATA_DIR")
     if raw_data_dir:
         data_dir = Path(raw_data_dir)
@@ -269,19 +293,6 @@ def load_settings(
             profile_path = (base_dir / profile_path).resolve()
     else:
         profile_path = (base_dir / "profile.md").resolve()
-
-    # 10. Gemini settings
-    raw_gemini_key = _get_str("GEMINI_API_KEY")
-    gemini_api_key = raw_gemini_key if raw_gemini_key else None
-    gemini_model = _get_str("GEMINI_MODEL") or "gemini-3.1-flash-lite"
-
-    raw_provider = _get_str("AI_PROVIDER")
-    if raw_provider:
-        ai_provider = raw_provider.lower()
-    elif gemini_api_key:
-        ai_provider = "gemini"
-    else:
-        ai_provider = "claude"
 
     return Settings(
         bot_token=bot_token,
