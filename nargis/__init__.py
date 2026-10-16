@@ -3,6 +3,7 @@ from nargis.agent import NargisAgent
 from nargis.classifier import IntentClassifier, MessageClassification, UrgencyLevel, Intent
 from nargis.validator import ResponseValidator
 from nargis.service import NargisContactService, NargisDisciplineScoreService
+from nargis.dispatcher import NargisMessageDispatcher, get_message_dispatcher
 
 __all__ = [
     "NargisAgent",
@@ -13,4 +14,6 @@ __all__ = [
     "ResponseValidator",
     "NargisContactService",
     "NargisDisciplineScoreService",
+    "NargisMessageDispatcher",
+    "get_message_dispatcher",
 ]

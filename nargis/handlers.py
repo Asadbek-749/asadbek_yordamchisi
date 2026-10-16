@@ -160,4 +160,81 @@ def build_nargis_owner_router(owner_id: int) -> Router:
     async def cb_nargis_important(callback: CallbackQuery) -> None:
         await callback.answer("🔥 Muhim deb belgilandi.")
 
+    # ─────────────────────────────────────────────
+    # Dispatch callbacks: [🚀 Ha, yuborilsin] / [❌ Bekor qilish]
+    # ─────────────────────────────────────────────
+    @router.callback_query(is_owner, F.data.startswith("dispatch:send:"))
+    async def cb_dispatch_send(callback: CallbackQuery) -> None:
+        draft_id = callback.data.split(":")[-1]
+        from nargis.dispatcher import get_message_dispatcher
+        dispatcher = get_message_dispatcher()
+        success, report = await dispatcher.execute_send(draft_id, callback.bot)
+        await callback.answer("✅ Yuborildi!" if success else "⚠️ Xatolik")
+        try:
+            await callback.message.edit_text(report, parse_mode="HTML")
+        except Exception:
+            await callback.message.answer(report, parse_mode="HTML")
+
+    @router.callback_query(is_owner, F.data.startswith("dispatch:cancel:"))
+    async def cb_dispatch_cancel(callback: CallbackQuery) -> None:
+        draft_id = callback.data.split(":")[-1]
+        from nargis.dispatcher import get_message_dispatcher
+        dispatcher = get_message_dispatcher()
+        draft = dispatcher._drafts.get(draft_id)
+        if draft:
+            draft.status = "CANCELLED"
+        await callback.answer("❌ Bekor qilindi.")
+        try:
+            await callback.message.edit_text("❌ <b>Xabar yuborish bekor qilindi.</b>", parse_mode="HTML")
+        except Exception:
+            pass
+
+    # ─────────────────────────────────────────────
+    # /addcontact — Yangi kontakt qo'shish yoki yangilash
+    # ─────────────────────────────────────────────
+    @router.message(is_owner, Command("addcontact"))
+    async def cmd_addcontact(message: Message) -> None:
+        args = (message.text or "").split()[1:]
+        if not args:
+            await message.answer(
+                "ℹ️ <b>Foydalanish:</b> <code>/addcontact &lt;Ism&gt; &lt;Telegram_ID yoki @username&gt;</code>\n\n"
+                "<b>Misollar:</b>\n"
+                "• <code>/addcontact Oyattullo 123456789</code>\n"
+                "• <code>/addcontact Oyattullo @oyatullo_dev</code>\n"
+                "• <code>/addcontact Oyattullo 123456789 @oyatullo_dev</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        name = args[0]
+        telegram_id = None
+        username = None
+
+        for a in args[1:]:
+            if a.startswith("@"):
+                username = a.lstrip("@")
+            elif a.isdigit():
+                telegram_id = int(a)
+            elif not username:
+                username = a
+
+        contact = await contact_svc.add_or_update_contact(
+            first_name=name,
+            telegram_id=telegram_id,
+            username=username,
+        )
+
+        user_disp = f"@{contact.username}" if contact.username else "—"
+        id_disp = f"<code>{contact.telegram_id}</code>" if contact.telegram_id and contact.telegram_id > 0 else "kiritilmagan"
+
+        await message.answer(
+            f"✅ <b>Kontakt muvaffaqiyatli saqlandi!</b>\n\n"
+            f"👤 <b>Ism:</b> {contact.first_name}\n"
+            f"🔹 <b>Username:</b> {user_disp}\n"
+            f"🆔 <b>Telegram ID:</b> {id_disp}\n\n"
+            f"<i>Endi ushbu kontaktga ovozli yoki matnli xabar yuborishingiz mumkin.</i>",
+            parse_mode="HTML",
+        )
+
     return router
+

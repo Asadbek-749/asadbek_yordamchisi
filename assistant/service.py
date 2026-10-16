@@ -531,10 +531,25 @@ class Assistant:
         sender_username = getattr(from_user, "username", None)
         conn = f"direct_{chat_id}"
 
-        # If sender is the owner, check for finance input first, else act as direct copilot
+        # If sender is the owner, check for message dispatch first, then finance input, else act as direct copilot
         if is_owner:
             from discipline.db import is_db_initialized
             if is_db_initialized():
+                try:
+                    from nargis.dispatcher import get_message_dispatcher
+                    dispatcher = get_message_dispatcher()
+                    dispatched = await dispatcher.handle_owner_message(
+                        message=message,
+                        text=raw_text,
+                        owner_id=from_id,
+                        bot=bot,
+                        ai_generator=self.generator,
+                    )
+                    if dispatched:
+                        return
+                except Exception as _disp_err:
+                    logger.warning("Nargis dispatcher check error: %s", _disp_err)
+
                 try:
                     from finance.extractor import FinanceExtractor
                     from finance.handlers import _process_finance_text

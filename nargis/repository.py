@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Optional, Sequence
 
-from sqlalchemy import desc, select, update
+from sqlalchemy import desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from discipline.models import (
@@ -86,6 +86,110 @@ class NargisRepository:
             select(NargisContact).where(NargisContact.id == contact_id)
         )
         return result.scalar_one_or_none()
+
+    async def get_contact_by_telegram_id(self, telegram_id: int) -> Optional[NargisContact]:
+        result = await self.session.execute(
+            select(NargisContact).where(NargisContact.telegram_id == telegram_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_contact_by_username(self, username: str) -> Optional[NargisContact]:
+        clean = username.strip().lstrip("@")
+        if not clean:
+            return None
+        result = await self.session.execute(
+            select(NargisContact).where(func.lower(NargisContact.username) == clean.lower())
+        )
+        return result.scalar_one_or_none()
+
+    async def search_contacts(self, query: str, limit: int = 10) -> Sequence[NargisContact]:
+        """Search contacts by username, first/last name, phone, or telegram_id with Uzbek stem matching."""
+        clean = query.strip().lstrip("@")
+        if not clean:
+            return []
+
+        # If numeric ID
+        if clean.isdigit():
+            tid = int(clean)
+            c = await self.get_contact_by_telegram_id(tid)
+            if c:
+                return [c]
+
+        pattern = f"%{clean}%"
+        stmt = (
+            select(NargisContact)
+            .where(
+                or_(
+                    NargisContact.username.ilike(pattern),
+                    NargisContact.first_name.ilike(pattern),
+                    NargisContact.last_name.ilike(pattern),
+                    NargisContact.phone.ilike(pattern),
+                )
+            )
+            .order_by(desc(NargisContact.last_seen))
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        records = list(result.scalars().all())
+        if records:
+            return records
+
+        # Stem matching: if clean is >= 4 chars (e.g. "oyattu" for "oyattula" / "oyattullo")
+        if len(clean) >= 4:
+            stem_pattern = f"%{clean[:4]}%"
+            stem_stmt = (
+                select(NargisContact)
+                .where(
+                    or_(
+                        NargisContact.username.ilike(stem_pattern),
+                        NargisContact.first_name.ilike(stem_pattern),
+                        NargisContact.last_name.ilike(stem_pattern),
+                    )
+                )
+                .order_by(desc(NargisContact.last_seen))
+                .limit(limit)
+            )
+            stem_res = await self.session.execute(stem_stmt)
+            records = list(stem_res.scalars().all())
+            if records:
+                return records
+
+        return []
+
+    async def create_or_update_contact(
+        self,
+        first_name: str,
+        telegram_id: Optional[int] = None,
+        username: Optional[str] = None,
+        phone: Optional[str] = None,
+    ) -> NargisContact:
+        clean_user = username.strip().lstrip("@") if username else None
+        contact: Optional[NargisContact] = None
+        if telegram_id:
+            contact = await self.get_contact_by_telegram_id(telegram_id)
+        elif clean_user:
+            contact = await self.get_contact_by_username(clean_user)
+
+        if contact is None:
+            # If telegram_id not provided, generate deterministic negative ID from username/name
+            tid = telegram_id or (-abs(hash(clean_user or first_name)) % 1_000_000_000 - 1)
+            contact = NargisContact(
+                telegram_id=tid,
+                first_name=first_name,
+                username=clean_user,
+                phone=phone,
+            )
+            self.session.add(contact)
+            await self.session.flush()
+        else:
+            if first_name:
+                contact.first_name = first_name
+            if clean_user:
+                contact.username = clean_user
+            if phone:
+                contact.phone = phone
+            contact.last_seen = utcnow()
+        return contact
 
     # ─────────────────────────────────────────────
     # MESSAGES

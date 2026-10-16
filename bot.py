@@ -312,6 +312,7 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="messages", description="📥 Kiruvchi xabarlar"),
                 BotCommand(command="important", description="🔥 Muhim xabarlar"),
                 BotCommand(command="contacts", description="👥 Kontaktlar va leadlar"),
+                BotCommand(command="addcontact", description="👤 Kontakt qo'shish yoki yangilash"),
                 BotCommand(command="status", description="⚙️ Bot faoliyati va holati"),
                 BotCommand(command="settings", description="🔧 Kun tartibi sozlamalari"),
             ],

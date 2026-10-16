@@ -112,6 +112,65 @@ class NargisContactService:
             repo = NargisRepository(session)
             await repo.update_message_status(message_id, "VIEWED")
 
+    async def search_contacts(self, query: str, limit: int = 10) -> Sequence[NargisContact]:
+        """Search contacts by username, full name, phone, or telegram_id."""
+        async with get_session() as session:
+            repo = NargisRepository(session)
+            return await repo.search_contacts(query=query, limit=limit)
+
+    async def get_contact_by_id(self, contact_id: int) -> Optional[NargisContact]:
+        async with get_session() as session:
+            repo = NargisRepository(session)
+            return await repo.get_contact_by_id(contact_id)
+
+    async def get_contact_by_telegram_id(self, telegram_id: int) -> Optional[NargisContact]:
+        async with get_session() as session:
+            repo = NargisRepository(session)
+            return await repo.get_contact_by_telegram_id(telegram_id)
+
+    async def get_contact_by_username(self, username: str) -> Optional[NargisContact]:
+        async with get_session() as session:
+            repo = NargisRepository(session)
+            return await repo.get_contact_by_username(username)
+
+    async def add_or_update_contact(
+        self,
+        first_name: str,
+        telegram_id: Optional[int] = None,
+        username: Optional[str] = None,
+        phone: Optional[str] = None,
+    ) -> NargisContact:
+        async with get_session() as session:
+            repo = NargisRepository(session)
+            return await repo.create_or_update_contact(
+                first_name=first_name,
+                telegram_id=telegram_id,
+                username=username,
+                phone=phone,
+            )
+
+    async def log_outgoing_message(
+        self,
+        contact: NargisContact,
+        content: str,
+        telegram_message_id: Optional[int] = None,
+        business_connection_id: Optional[str] = None,
+    ) -> NargisMessage:
+        """Log outgoing message sent from owner / Nargis to a contact."""
+        async with get_session() as session:
+            repo = NargisRepository(session)
+            return await repo.log_message(
+                contact=contact,
+                content=content,
+                direction="OUT",
+                intent="DISPATCH",
+                urgency="NORMAL",
+                importance_score=50,
+                telegram_message_id=telegram_message_id,
+                business_connection_id=business_connection_id,
+                owner_notified=True,
+            )
+
 
 class NargisDisciplineScoreService:
     """Manages discipline score — awards, penalties, and level tracking."""

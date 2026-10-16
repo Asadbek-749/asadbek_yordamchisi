@@ -247,6 +247,22 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             # Display heard transcription
             await status_msg.edit_text(f"🎙 <b>Eshitildi:</b> <i>«{transcription}»</i>", parse_mode="HTML")
 
+            # 1.5 Check if this is a dispatch command (send message to contact, confirm, cancel, status inquiry)
+            try:
+                from nargis.dispatcher import get_message_dispatcher
+                dispatcher = get_message_dispatcher()
+                dispatched = await dispatcher.handle_owner_message(
+                    message=message,
+                    text=transcription,
+                    owner_id=owner_id,
+                    bot=bot,
+                    ai_generator=ai_generator,
+                )
+                if dispatched:
+                    return
+            except Exception as _disp_err:
+                logger.warning("Nargis dispatcher error on voice: %s", _disp_err)
+
             # 2. Check if this is a financial statement (expense or income)
             fin_result = await extractor.extract(transcription)
             if fin_result.transactions or fin_result.is_ambiguous:
