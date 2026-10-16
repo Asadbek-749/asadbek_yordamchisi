@@ -65,31 +65,13 @@ class GeminiClient:
             text = await resp.text()
             return status, text
 
-    async def generate(self, system_prompt: str, user_prompt: str) -> str:
-        """Generate text completion from Gemini with automatic retry and model fallback."""
+    async def _execute_payload(self, payload: Dict[str, Any]) -> str:
+        """Execute request payload against Gemini API with retry and model fallback."""
         if not self.api_key:
             raise GeminiAuthError(
                 "GEMINI_API_KEY is not configured in .env. "
                 "Get a free API key at https://aistudio.google.com/ and set GEMINI_API_KEY in .env."
             )
-
-        payload: Dict[str, Any] = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": user_prompt}],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 1024,
-            },
-        }
-
-        if system_prompt and system_prompt.strip():
-            payload["system_instruction"] = {
-                "parts": [{"text": system_prompt.strip()}]
-            }
 
         client_timeout = aiohttp.ClientTimeout(total=float(self.timeout))
         models_to_try = self._build_models_to_try()
@@ -167,6 +149,61 @@ class GeminiClient:
             raise
         except Exception as e:
             raise GeminiError(f"Gemini request failed: {e}")
+
+    async def generate(self, system_prompt: str, user_prompt: str) -> str:
+        """Generate text completion from Gemini with automatic retry and model fallback."""
+        payload: Dict[str, Any] = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": user_prompt}],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 1024,
+            },
+        }
+
+        if system_prompt and system_prompt.strip():
+            payload["system_instruction"] = {
+                "parts": [{"text": system_prompt.strip()}]
+            }
+
+        return await self._execute_payload(payload)
+
+    async def transcribe_audio(
+        self,
+        audio_bytes: bytes,
+        mime_type: str = "audio/ogg",
+        prompt: str = "Ushbu ovozli xabarni so'zma-so'z o'zbek tilida transkripsiya qil. Faqat eshitilgan gapni yoz, boshqa hech qanday izoh qo'shma.",
+    ) -> str:
+        """Transcribe audio bytes (OGG Opus, MP3, WAV) into text using Gemini multimodal API."""
+        import base64
+        b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
+        payload: Dict[str, Any] = {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "inline_data": {
+                                "mime_type": mime_type,
+                                "data": b64_audio,
+                            }
+                        },
+                        {
+                            "text": prompt,
+                        },
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 1024,
+            },
+        }
+        return await self._execute_payload(payload)
 
     async def inspect(self) -> Dict[str, Any]:
         """Perform a quick ping query to verify connectivity and API key validity."""

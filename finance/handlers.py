@@ -207,7 +207,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=compound_pending_keyboard())
 
     # ─────────────────────────────────────────────────────────────────────────
-    # Voice messages from owner (Speech-to-text -> Finance Extraction)
+    # Voice messages from owner (Speech-to-text -> Finance or Copilot)
     # ─────────────────────────────────────────────────────────────────────────
     @router.message(is_owner, F.voice)
     async def handle_owner_voice(message: Message) -> None:
@@ -216,48 +216,59 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         if not voice:
             return
 
-        await message.answer("🎙 <i>Ovozli xabar tinglanmoqda va tahlil qilinmoqda...</i>", parse_mode="HTML")
+        status_msg = await message.answer("🎙 <i>Ovozli xabar tinglanmoqda va tahlil qilinmoqda...</i>", parse_mode="HTML")
 
-        # In production or if Gemini is available, we transcribe using Gemini
-        # Download audio
         try:
             file_info = await bot.get_file(voice.file_id)
-            file_path = file_info.file_path
+            audio_io = io.BytesIO()
+            await bot.download_file(file_info.file_path, audio_io)
+            audio_bytes = audio_io.getvalue()
             transcription = ""
 
-            # If Gemini generator is available, transcribe via audio prompt
-            if hasattr(ai_generator, "generate"):
-                # Download audio file to bytes
-                import aiohttp
-                token = bot.token
-                url = f"https://api.telegram.org/file/bot{token}/{file_path}"
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as resp:
-                        if resp.status == 200:
-                            audio_bytes = await resp.read()
-                            # Use Gemini or speech fallback
-                            try:
-                                prompt = "Ushbu ovozli xabarda nima deyilgan? Matnni so'zma-so'z o'zbek tilida yozib ber."
-                                transcription = await ai_generator.generate(
-                                    "You are a speech transcriber.", prompt
-                                )
-                            except Exception:
-                                transcription = ""
+            # 1. Transcribe using Gemini multimodal audio capability
+            if hasattr(ai_generator, "transcribe_audio"):
+                transcription = await ai_generator.transcribe_audio(audio_bytes, mime_type="audio/ogg")
+            else:
+                gemini_key = os.environ.get("GEMINI_API_KEY")
+                if gemini_key:
+                    from assistant.gemini_client import GeminiClient
+                    gc = GeminiClient(api_key=gemini_key)
+                    transcription = await gc.transcribe_audio(audio_bytes, mime_type="audio/ogg")
 
+            transcription = transcription.strip()
             if not transcription:
-                # If speech recognition wasn't configured, kindly ask for text
-                await message.answer(
-                    "🎙 Ovozli xabarni aniq tushuna olmadim. Iltimos, xarajat yoki daromadni matn shaklida yozib yuboring.\n"
-                    "Masalan: <i>'Taksiga 40 ming, ovqatga 50 ming'</i>",
+                await status_msg.edit_text(
+                    "🎙 Ovozli xabarni eshitib bo'lmadi yoki unda nutq aniqlanmadi. "
+                    "Iltimos, qayta yozib ko'ring yoki xabaringizni matn shaklida yuboring.",
                     parse_mode="HTML",
                 )
                 return
 
-            # Extract from transcribed text
-            await _process_finance_text(message, transcription, service, extractor, owner_id, source="voice")
+            # Display heard transcription
+            await status_msg.edit_text(f"🎙 <b>Eshitildi:</b> <i>«{transcription}»</i>", parse_mode="HTML")
+
+            # 2. Check if this is a financial statement (expense or income)
+            fin_result = await extractor.extract(transcription)
+            if fin_result.transactions or fin_result.is_ambiguous:
+                await _process_finance_text(message, transcription, service, extractor, owner_id, source="voice")
+            else:
+                # General conversation or task from Asadbek to Nargis copilot
+                if hasattr(ai_generator, "generate"):
+                    from assistant.prompts import build_owner_copilot_prompt
+                    from assistant.service import read_profile
+                    from pathlib import Path
+                    profile = read_profile(Path("profile.md"))
+                    sys_prompt = build_owner_copilot_prompt(profile, datetime.datetime.now(datetime.timezone.utc))
+                    reply = await ai_generator.generate(sys_prompt, transcription)
+                    if reply:
+                        await message.answer(f"🤖 <b>Nargis:</b>\n\n{reply}", parse_mode="HTML")
         except Exception as e:
-            logger.error("Failed to process owner voice finance: %s", e)
-            await message.answer("Ovozli xabarni qayta ishlashda xatolik yuz berdi. Iltimos, matn shaklida yozing.")
+            logger.error("Failed to process owner voice: %s", e, exc_info=True)
+            await status_msg.edit_text(
+                "⚠️ Ovozli xabarni tahlil qilishda texnik muammo yuz berdi. "
+                "Iltimos, xarajat yoki xabaringizni matn ko'rinishida yozib yuboring.",
+                parse_mode="HTML",
+            )
 
     # ─────────────────────────────────────────────────────────────────────────
     # CALLBACK QUERY HANDLERS (fin:confirm, fin:cancel, fin:main, etc.)
