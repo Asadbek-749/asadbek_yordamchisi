@@ -41,7 +41,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
     @router.message(is_owner, F.text == "🎯 Intizom paneli")
     async def cmd_discipline(message: Message) -> None:
         text = (
-            "🎯 <b>ASAD AI — Shaxsiy Intizom va Hosildorlik Tizimi</b>\n\n"
+            "🤖 <b>NARGIS — Shaxsiy Intizom va Hosildorlik Tizimi</b>\n\n"
             "Bu yerda siz o'z rejalaringizni, odatlaringizni va diqqatni "
             "boshqarishingiz mumkin. Kerakli bo'limni tanlang:"
         )
@@ -51,7 +51,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
     async def cb_disc_main(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         text = (
-            "🎯 <b>ASAD AI — Shaxsiy Intizom va Hosildorlik Tizimi</b>\n\n"
+            "🤖 <b>NARGIS — Shaxsiy Intizom va Hosildorlik Tizimi</b>\n\n"
             "Kerakli bo'limni tanlang:"
         )
         await callback.message.edit_text(text, reply_markup=main_discipline_keyboard(), parse_mode="HTML")

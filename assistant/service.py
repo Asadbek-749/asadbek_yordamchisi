@@ -33,6 +33,18 @@ from assistant.store import (
 
 logger = logging.getLogger(__name__)
 
+# Nargis AI Agent (lazy import to avoid circular deps)
+try:
+    from nargis.agent import NargisAgent
+    from nargis.classifier import IntentClassifier
+    from nargis.validator import ResponseValidator
+    from nargis.service import NargisContactService
+    _NARGIS_AVAILABLE = True
+except ImportError:
+    _NARGIS_AVAILABLE = False
+    NargisAgent = None  # type: ignore
+    logger.warning("Nargis agent module not found. Running in basic mode.")
+
 
 class Outcome(str, Enum):
     """Possible outcomes of processing a business message."""
@@ -174,6 +186,20 @@ class Assistant:
         self._last_error_notify: float = 0.0
         self._previews_path = settings.data_dir / "previews.jsonl"
 
+        # Nargis AI Agent — optional, activated if nargis module is available
+        if _NARGIS_AVAILABLE and settings.owner_id:
+            self._nargis_agent: Optional[Any] = NargisAgent(
+                ai_generator=generator,
+                owner_id=settings.owner_id,
+                classifier=IntentClassifier(generator),
+                validator=ResponseValidator(),
+                contact_service=NargisContactService(),
+            )
+            self._contact_service: Optional[Any] = NargisContactService()
+        else:
+            self._nargis_agent = None
+            self._contact_service = None
+
     def _get_chat_lock(self, chat_key: str) -> asyncio.Lock:
         if chat_key not in self._chat_locks:
             self._chat_locks[chat_key] = asyncio.Lock()
@@ -258,9 +284,31 @@ class Assistant:
         # 7. Language detection and record incoming message
         lang = detect_language(desc) or self.history.last_language(conn, chat_id)
         sender_name = getattr(from_user, "full_name", None) or "User"
+        sender_username = getattr(from_user, "username", None)
         self.history.add(
             conn, chat_id, role="other", name=sender_name, text=desc, lang=lang, ts=self.clock()
         )
+
+        # 7a. Nargis: classify message + notify owner if important
+        classification = None
+        if self._nargis_agent is not None:
+            try:
+                classification = await self._nargis_agent.process_and_classify(
+                    message_text=desc,
+                    sender_name=sender_name,
+                    sender_username=sender_username,
+                    sender_telegram_id=from_id,
+                    connection_id=conn,
+                    chat_id=chat_id,
+                )
+                logger.info(
+                    "Nargis classify: intent=%s urgency=%s score=%d",
+                    classification.primary_intent,
+                    classification.urgency,
+                    classification.importance_score,
+                )
+            except Exception as _nargis_err:
+                logger.warning("Nargis classification error (non-fatal): %s", _nargis_err)
 
         # 8. Chat lock to serialize generation and check active blocks
         lock = self._get_chat_lock(chat_key)
@@ -315,6 +363,10 @@ class Assistant:
                         pass
                 return self._record_outcome(Outcome.error)
 
+            # 9a. Validate reply through Nargis safety layer
+            if self._nargis_agent is not None:
+                reply = self._nargis_agent.validate_reply(reply)
+
             # 10. Check empty or SKIP token
             if not reply or reply.strip() == SKIP_TOKEN:
                 return self._record_outcome(Outcome.skipped)
@@ -328,6 +380,31 @@ class Assistant:
                 incoming=desc,
                 reply=reply,
             )
+
+            # 10a. Nargis: log message to DB + send owner notification if important
+            if self._nargis_agent is not None and classification is not None:
+                try:
+                    owner_notified = await self._nargis_agent.send_owner_notification(
+                        bot=bot,
+                        classification=classification,
+                        sender_name=sender_name,
+                        sender_username=sender_username,
+                        message_text=desc,
+                    )
+                    if self._contact_service is not None:
+                        await self._contact_service.log_incoming_message(
+                            telegram_id=from_id,
+                            sender_name=sender_name,
+                            username=sender_username,
+                            content=desc,
+                            classification=classification,
+                            telegram_message_id=getattr(message, "message_id", None),
+                            business_connection_id=conn,
+                            ai_reply=reply if reply.strip() != SKIP_TOKEN else None,
+                            owner_notified=owner_notified,
+                        )
+                except Exception as _log_err:
+                    logger.warning("Nargis logging error (non-fatal): %s", _log_err)
 
             # 11. Preview mode (AUTO_SEND=false)
             if not self.settings.auto_send:

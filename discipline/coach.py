@@ -1,4 +1,4 @@
-"""AI Discipline Coach module providing firm, practical productivity guidance."""
+"""AI Discipline Coach module — Nargis Strict Accountability Coach."""
 from __future__ import annotations
 
 import logging
@@ -8,7 +8,7 @@ from discipline.models import DisciplineTask
 
 logger = logging.getLogger(__name__)
 
-COACH_SYSTEM_PROMPT = """Sen Asadbekning shaxsiy AI Intizom Murabbiysisan (AI Discipline Coach).
+COACH_SYSTEM_PROMPT = """Sen Nargis — Asadbek ustozning AI agenti va shaxsiy Intizom Murabbiysisan.
 Asadbek: 24 yoshda, TATU talabasi, dasturchi, Aipply Academy o'qituvchisi.
 
 Sening maqsading:
@@ -24,6 +24,7 @@ QOIDALAR VA USLUBING:
 5. Asadbekning asosiy vaqtlari: 08:00–18:00 oralig'ida ish va dars bilan band; kechki 20:40 dan keyin ko'proq shaxsiy fokus vaqti.
 6. Har doim o'zbek tilida (lotin yozuvida) yoz.
 7. Javobing ixcham (2-4 gap) bo'lsin.
+8. Sen AI agent — Nargis. Hech qachon o'zingni Asadbek deb ko'rsatma.
 """
 
 
@@ -106,5 +107,6 @@ class DisciplineCoach:
         """Deterministic rule-based response when AI provider is unreachable."""
         return (
             "Asadbek, intizom — bu hissiyot emas, har kungi qat'iy reja va natija. "
-            "Kechikkan vazifani ortga surmay, hoziroq 10 daqiqalik birinchi qadamini boshlang yoki aniq vaqt belgilang."
+            "Kechikkan vazifani ortga surmay, hoziroq 10 daqiqalik birinchi qadamini boshlang yoki aniq vaqt belgilang. "
+            "— Nargis"
         )

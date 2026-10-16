@@ -42,6 +42,14 @@ from discipline import (
     init_db,
 )
 
+# Nargis AI Agent router (optional — graceful fallback if not available)
+try:
+    from nargis.handlers import build_nargis_owner_router
+    _NARGIS_ROUTER_AVAILABLE = True
+except ImportError:
+    _NARGIS_ROUTER_AVAILABLE = False
+    build_nargis_owner_router = None  # type: ignore
+
 logger = logging.getLogger("assistant")
 
 
@@ -221,7 +229,7 @@ async def run_bot(settings: Settings) -> None:
         )
 
     # Startup logs
-    logger.info("Bot @%s is running", bot_user.username)
+    logger.info("🤖 NARGIS AI is running as @%s", bot_user.username)
     if settings.auto_send:
         logger.warning("Mode: AUTO-SEND (replies will be automatically sent to Telegram chats)")
     else:
@@ -245,8 +253,17 @@ async def run_bot(settings: Settings) -> None:
     discipline_router = build_discipline_router(discipline_service, settings.owner_id)
 
     dp = Dispatcher()
+    # Nargis owner inbox router (registered first for priority)
+    if _NARGIS_ROUTER_AVAILABLE and settings.owner_id:
+        try:
+            nargis_router = build_nargis_owner_router(settings.owner_id)
+            dp.include_router(nargis_router)
+            logger.info("🤖 Nargis owner inbox router registered.")
+        except Exception as _nr_err:
+            logger.warning("Could not register Nargis router: %s", _nr_err)
     dp.include_router(discipline_router)
     dp.include_router(build_router(assistant))
+
 
     discipline_scheduler = DisciplineScheduler(bot, discipline_service, settings.owner_id)
     discipline_scheduler.start()
@@ -267,6 +284,10 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="addtask", description="➕ Yangi vazifa yaratish"),
                 BotCommand(command="report", description="📊 Kunlik intizom hisoboti"),
                 BotCommand(command="week", description="📈 Haftalik tahlil"),
+                BotCommand(command="score", description="🏆 Nargis intizom bali"),
+                BotCommand(command="messages", description="📥 Kiruvchi xabarlar"),
+                BotCommand(command="important", description="🔥 Muhim xabarlar"),
+                BotCommand(command="contacts", description="👥 Kontaktlar va leadlar"),
                 BotCommand(command="status", description="⚙️ Bot faoliyati va holati"),
                 BotCommand(command="settings", description="🔧 Kun tartibi sozlamalari"),
             ],

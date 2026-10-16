@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.x async models for the Discipline & Productivity System."""
+"""SQLAlchemy 2.x async models for the Discipline & Productivity System + Nargis AI Agent."""
 from __future__ import annotations
 
 import datetime
@@ -219,3 +219,133 @@ class ReminderDelivery(Base):
         String(50), nullable=False
     )  # morning_plan, evening_report, task_deadline, focus_end
     delivered_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NARGIS AI AGENT MODELS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class NargisContact(Base):
+    """Contact / lead record for every unique user who messaged Nargis."""
+    __tablename__ = "nargis_contacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    # Lead tracking
+    lead_status: Mapped[str] = mapped_column(
+        String(30), default="NEW", index=True
+    )  # NEW, CONTACTED, QUALIFIED, WAITING, CONVERTED, LOST, ARCHIVED
+
+    # Last known intent / reason
+    last_intent: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    importance_score: Mapped[int] = mapped_column(Integer, default=50)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tags: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # CSV
+
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    messages: Mapped[list["NargisMessage"]] = relationship(
+        "NargisMessage", back_populates="contact", cascade="all, delete-orphan"
+    )
+
+
+class NargisMessage(Base):
+    """Logged incoming message from a user to Nargis."""
+    __tablename__ = "nargis_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    contact_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("nargis_contacts.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    telegram_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    business_connection_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    direction: Mapped[str] = mapped_column(
+        String(10), default="IN"
+    )  # IN (from user), OUT (Nargis reply)
+
+    # Classification
+    intent: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    urgency: Mapped[str] = mapped_column(String(20), default="NORMAL")
+    importance_score: Mapped[int] = mapped_column(Integer, default=50)
+    requires_owner: Mapped[bool] = mapped_column(Boolean, default=False)
+    deadline_hint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    reason_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Status
+    status: Mapped[str] = mapped_column(
+        String(30), default="NEW", index=True
+    )  # NEW, VIEWED, IN_PROGRESS, WAITING, REPLIED, RESOLVED, ARCHIVED
+
+    owner_notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    ai_generated_reply: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    contact: Mapped["NargisContact"] = relationship("NargisContact", back_populates="messages")
+
+
+class NargisEscalation(Base):
+    """Record of critical/high-importance escalation notifications sent to owner."""
+    __tablename__ = "nargis_escalations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("nargis_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    contact_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("nargis_contacts.id", ondelete="SET NULL"), nullable=True
+    )
+    urgency_level: Mapped[str] = mapped_column(String(20), nullable=False)  # HIGH, CRITICAL
+    notification_text: Mapped[str] = mapped_column(Text, nullable=False)
+    delivered: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class DisciplineScore(Base):
+    """Current discipline score for the owner."""
+    __tablename__ = "discipline_score"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    score: Mapped[int] = mapped_column(Integer, default=100)
+    level: Mapped[str] = mapped_column(
+        String(30), default="STRONG"
+    )  # ELITE, STRONG, NORMAL, WEAK, CRITICAL, DISCIPLINE_FAILURE
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    events: Mapped[list["DisciplineScoreEvent"]] = relationship(
+        "DisciplineScoreEvent", back_populates="score_record", cascade="all, delete-orphan"
+    )
+
+
+class DisciplineScoreEvent(Base):
+    """Individual score change event for audit trail."""
+    __tablename__ = "discipline_score_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("discipline_score.user_id", ondelete="CASCADE"), index=True
+    )
+    event_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # TASK_COMPLETED, TASK_MISSED, TASK_POSTPONED, FOCUS_COMPLETED,
+       # HABIT_COMPLETED, PLAN_CREATED, PLAN_IGNORED, DISCIPLINE_WARNING, etc.
+    score_delta: Mapped[int] = mapped_column(Integer, nullable=False)   # positive or negative
+    score_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    task_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("discipline_tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    score_record: Mapped["DisciplineScore"] = relationship("DisciplineScore", back_populates="events")
+

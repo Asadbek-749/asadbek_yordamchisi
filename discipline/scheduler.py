@@ -158,7 +158,8 @@ class DisciplineScheduler:
             f"📅 Bugungi rejangizda: <b>{active_count} ta faol vazifa</b> bor.\n\n"
             f"💡 <i>Eslatma:</i> 08:00–18:00 oralig'ida ish va darslar. "
             f"Kechki 20:40 dan keyin asosiy fokus bloklari uchun qulay vaqt.\n\n"
-            f"Rejani ko'rish va yangi vazifa qo'shish uchun: /today yoki /discipline"
+            f"Rejani ko'rish va yangi vazifa qo'shish uchun: /today yoki /discipline\n\n"
+            f"🤖 <i>Nargis</i>"
         )
         try:
             await self.bot.send_message(self.owner_id, text, parse_mode="HTML")
@@ -177,7 +178,7 @@ class DisciplineScheduler:
             f"• Bajarilmagan/kechikkan: ⚠️ {metrics.missed_count}\n"
             f"• Fokus vaqti: ⏳ {metrics.focus_minutes} daqiqa\n"
             f"• Odatlar: 🔥 {metrics.habits_completed}/{metrics.habits_total}\n\n"
-            f"🤖 <b>AI Murabbiy fikri:</b>\n"
+            f"🤖 <b>Nargis fikri:</b>\n"
             f"{ai_review}\n\n"
             f"Qolib ketgan vazifalar sababini qayd etish uchun /today ni bosing."
         )
