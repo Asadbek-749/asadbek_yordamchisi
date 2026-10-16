@@ -38,6 +38,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
 
     # ==================== MAIN DASHBOARD ====================
     @router.message(is_owner, Command("discipline"))
+    @router.message(is_owner, F.text == "🎯 Intizom paneli")
     async def cmd_discipline(message: Message) -> None:
         text = (
             "🎯 <b>ASAD AI — Shaxsiy Intizom va Hosildorlik Tizimi</b>\n\n"
@@ -58,6 +59,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
 
     # ==================== TODAY'S PLAN & TASKS ====================
     @router.message(is_owner, Command("today"))
+    @router.message(is_owner, F.text == "📋 Bugungi reja")
     async def cmd_today(message: Message) -> None:
         await _show_today_plan(message, service, owner_id)
 
@@ -330,6 +332,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
 
     # ==================== FOCUS TIMER ====================
     @router.message(is_owner, Command("focus"))
+    @router.message(is_owner, F.text == "⏳ Fokus (Pomodoro)")
     async def cmd_focus(message: Message) -> None:
         await _show_focus_menu(message, service, owner_id)
 
@@ -380,6 +383,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
 
     # ==================== HABITS MODULE ====================
     @router.message(is_owner, Command("habits"))
+    @router.message(is_owner, F.text == "🔥 Odatlar")
     async def cmd_habits(message: Message) -> None:
         await _show_habits(message, service, owner_id)
 
@@ -443,6 +447,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
 
     # ==================== REPORTS ====================
     @router.message(is_owner, Command("report"))
+    @router.message(is_owner, F.text == "📊 Kunlik hisobot")
     async def cmd_report(message: Message) -> None:
         await _show_daily_report(message, service, owner_id)
 
@@ -462,6 +467,7 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
 
     # ==================== SETTINGS & TOGGLES ====================
     @router.message(is_owner, Command("settings"))
+    @router.message(is_owner, F.text == "⚙️ Sozlamalar")
     async def cmd_settings(message: Message) -> None:
         await _show_settings(message, service, owner_id)
 

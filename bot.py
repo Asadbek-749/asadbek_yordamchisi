@@ -254,6 +254,27 @@ async def run_bot(settings: Settings) -> None:
     port_env = os.environ.get("PORT")
     health_server = await _start_health_server_if_port(port_env)
 
+    # Configure Telegram native Menu button with commands
+    try:
+        from aiogram.types import BotCommand, BotCommandScopeDefault
+        await bot.set_my_commands(
+            [
+                BotCommand(command="start", description="🚀 Bosh sahifa va menyuni ochish"),
+                BotCommand(command="discipline", description="🎯 Intizom boshqaruv paneli"),
+                BotCommand(command="today", description="📋 Bugungi reja va vazifalar"),
+                BotCommand(command="focus", description="⏳ Fokus (Pomodoro) taymer"),
+                BotCommand(command="habits", description="🔥 Kundalik odatlar nazorati"),
+                BotCommand(command="addtask", description="➕ Yangi vazifa yaratish"),
+                BotCommand(command="report", description="📊 Kunlik intizom hisoboti"),
+                BotCommand(command="week", description="📈 Haftalik tahlil"),
+                BotCommand(command="status", description="⚙️ Bot faoliyati va holati"),
+                BotCommand(command="settings", description="🔧 Kun tartibi sozlamalari"),
+            ],
+            scope=BotCommandScopeDefault(),
+        )
+    except Exception as e:
+        logger.warning("Could not set bot commands: %s", e)
+
     try:
         await dp.start_polling(bot, allowed_updates=ALLOWED_UPDATES)
     finally:

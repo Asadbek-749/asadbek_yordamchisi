@@ -62,7 +62,8 @@ def build_router(assistant: Assistant) -> Router:
         Command("start"),
     )
     async def cmd_owner_start(message: Message) -> None:
-        await message.answer(assistant.start_text())
+        from discipline.keyboards import main_reply_keyboard
+        await message.answer(assistant.start_text(), reply_markup=main_reply_keyboard())
 
     # 4. Direct /start from non-owners
     @router.message(

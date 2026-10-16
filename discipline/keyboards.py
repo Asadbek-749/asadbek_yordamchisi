@@ -2,9 +2,37 @@
 from __future__ import annotations
 
 from typing import Sequence
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 from discipline.models import DisciplineHabit, DisciplineTask
+
+
+def main_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Bottom persistent keyboard with sections for easy app-like navigation."""
+    keyboard = [
+        [
+            KeyboardButton(text="🎯 Intizom paneli"),
+            KeyboardButton(text="📋 Bugungi reja"),
+        ],
+        [
+            KeyboardButton(text="⏳ Fokus (Pomodoro)"),
+            KeyboardButton(text="🔥 Odatlar"),
+        ],
+        [
+            KeyboardButton(text="📊 Kunlik hisobot"),
+            KeyboardButton(text="⚙️ Sozlamalar"),
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=keyboard,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
 
 
 def main_discipline_keyboard() -> InlineKeyboardMarkup:
