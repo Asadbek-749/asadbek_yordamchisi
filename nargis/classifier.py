@@ -90,12 +90,27 @@ _PRICE_KEYWORDS = [
 _GREETING_KEYWORDS = [
     "salom", "assalomu", "hello", "hi", "hey", "привет", "здравствуйте",
 ]
+_RUDE_KEYWORDS = [
+    "ahmoq", "tentak", "jinni", "dalbayob", "itvachcha", "chort", "suka", "blyad",
+    "xomkalla", "iflos", "haromi", "yo'qol", "tupoy", "tvar", "padla", "idiot",
+    "stupid", "shut up", "fuck", "bitch", "naxuy", "poshel", "debil",
+]
 
 
 def _rule_classify(text: str) -> MessageClassification:
     """Fast rule-based classification as fallback / pre-filter."""
     lower = text.lower()
     intents: List[Intent] = []
+
+    if any(k in lower for k in _RUDE_KEYWORDS):
+        intents.append(Intent.COMPLAINT)
+        return MessageClassification(
+            intents=intents,
+            urgency=UrgencyLevel.HIGH,
+            importance_score=85,
+            requires_owner=True,
+            reason_summary="Foydalanuvchi qo'pol yoki haqoratomuz so'zlarni ishlatdi",
+        )
 
     if any(k in lower for k in _GREETING_KEYWORDS) and len(text.split()) <= 3:
         intents.append(Intent.GREETING)
