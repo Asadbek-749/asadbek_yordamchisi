@@ -71,13 +71,15 @@ class NargisAgent:
 
         if self.contact_service is not None:
             try:
-                await self.contact_service.upsert_contact(
-                    telegram_id=sender_telegram_id,
-                    first_name=sender_name.split()[0] if sender_name else None,
-                    username=sender_username,
-                    message_text=message_text,
-                    classification=classification,
-                )
+                from discipline.db import is_db_initialized
+                if is_db_initialized():
+                    await self.contact_service.upsert_contact(
+                        telegram_id=sender_telegram_id,
+                        first_name=sender_name.split()[0] if sender_name else None,
+                        username=sender_username,
+                        message_text=message_text,
+                        classification=classification,
+                    )
             except Exception as e:
                 logger.warning("Failed to upsert contact: %s", e)
 

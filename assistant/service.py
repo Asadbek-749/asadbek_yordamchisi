@@ -392,17 +392,19 @@ class Assistant:
                         message_text=desc,
                     )
                     if self._contact_service is not None:
-                        await self._contact_service.log_incoming_message(
-                            telegram_id=from_id,
-                            sender_name=sender_name,
-                            username=sender_username,
-                            content=desc,
-                            classification=classification,
-                            telegram_message_id=getattr(message, "message_id", None),
-                            business_connection_id=conn,
-                            ai_reply=reply if reply.strip() != SKIP_TOKEN else None,
-                            owner_notified=owner_notified,
-                        )
+                        from discipline.db import is_db_initialized
+                        if is_db_initialized():
+                            await self._contact_service.log_incoming_message(
+                                telegram_id=from_id,
+                                sender_name=sender_name,
+                                username=sender_username,
+                                content=desc,
+                                classification=classification,
+                                telegram_message_id=getattr(message, "message_id", None),
+                                business_connection_id=conn,
+                                ai_reply=reply if reply.strip() != SKIP_TOKEN else None,
+                                owner_notified=owner_notified,
+                            )
                 except Exception as _log_err:
                     logger.warning("Nargis logging error (non-fatal): %s", _log_err)
 
@@ -529,8 +531,30 @@ class Assistant:
         sender_username = getattr(from_user, "username", None)
         conn = f"direct_{chat_id}"
 
-        # If sender is the owner, Nargis acts as direct personal copilot
+        # If sender is the owner, check for finance input first, else act as direct copilot
         if is_owner:
+            from discipline.db import is_db_initialized
+            if is_db_initialized():
+                try:
+                    from finance.extractor import FinanceExtractor
+                    from finance.handlers import _process_finance_text
+                    from finance.service import FinanceService
+                    fin_extractor = FinanceExtractor(self.generator)
+                    fin_res = fin_extractor.rule_based_extract(raw_text)
+                    if fin_res.transactions or fin_res.is_ambiguous:
+                        fin_service = FinanceService()
+                        await _process_finance_text(
+                            message=message,
+                            text=raw_text,
+                            service=fin_service,
+                            extractor=fin_extractor,
+                            owner_id=from_id,
+                            source="text",
+                        )
+                        return
+                except Exception as _fe_err:
+                    logger.warning("Finance extraction check error: %s", _fe_err)
+
             lang = detect_language(raw_text) or "uz"
             self.history.add(conn, chat_id, role="other", name="Asadbek", text=raw_text, lang=lang, ts=self.clock())
             profile = read_profile(self.settings.profile_path)
@@ -628,18 +652,24 @@ class Assistant:
             f"📌 <b>Hozirgi holat:</b>\n"
             f"• Rejim: {mode_str}\n"
             f"• Holat: {state_str}\n\n"
-            f"📥 <b>Nargis Inbox & Boshqaruv:</b>\n"
-            f"/messages — Kelgan barcha xabarlar ro'yxati\n"
-            f"/important — Muhim va tezkor murojaatlar\n"
-            f"/contacts — Kontaktlar va leadlar bazasi\n"
-            f"/score — Kunlik Nargis intizom bali (100 dan boshlanadi)\n\n"
+            f"💰 <b>Shaxsiy Moliya Boshqaruvi:</b>\n"
+            f"/finance — Moliya boshqaruv paneli\n"
+            f"/budget — Oylik byudjet va tahlil\n"
+            f"/pendingfinance — Tasdiqlanmagan xarajatlar\n"
+            f"/finance_today — Bugungi moliyaviy hisobot\n"
+            f"/finance_week — Haftalik hisobot\n\n"
             f"🎯 <b>Intizom & Hosildorlik paneli:</b>\n"
             f"/discipline — Asosiy intizom menyusi\n"
             f"/today — Bugungi reja va vazifalar\n"
             f"/focus — Pomodoro fokus taymeri\n"
             f"/habits — Kundalik odatlar nazorati\n"
-            f"/report — Kunlik hisobot\n\n"
-            f"💡 <i>Menga istalgan savol yoki topshiriqni to'g'ridan-to'g'ri yozishingiz mumkin!</i>"
+            f"/report — Kunlik hisobot\n"
+            f"/score — Kunlik Nargis intizom bali\n\n"
+            f"📥 <b>Nargis Inbox:</b>\n"
+            f"/messages — Kelgan barcha xabarlar ro'yxati\n"
+            f"/important — Muhim va tezkor murojaatlar\n"
+            f"/contacts — Kontaktlar va leadlar bazasi\n\n"
+            f"💡 <i>Menga istalgan savol, topshiriq yoki xarajatni to'g'ridan-to'g'ri yozishingiz mumkin!</i>"
         )
 
 

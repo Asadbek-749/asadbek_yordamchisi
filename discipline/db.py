@@ -98,6 +98,11 @@ async def close_db() -> None:
         logger.info("Database connection closed.")
 
 
+def is_db_initialized() -> bool:
+    """Return True if the database sessionmaker is initialized and ready."""
+    return _session_factory is not None
+
+
 @asynccontextmanager
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Provide transactional async session scope."""

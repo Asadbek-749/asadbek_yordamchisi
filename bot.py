@@ -50,6 +50,16 @@ except ImportError:
     _NARGIS_ROUTER_AVAILABLE = False
     build_nargis_owner_router = None  # type: ignore
 
+# Nargis Personal Finance router
+try:
+    from finance.handlers import build_finance_router
+    from finance.service import FinanceService
+    _FINANCE_AVAILABLE = True
+except ImportError:
+    _FINANCE_AVAILABLE = False
+    build_finance_router = None  # type: ignore
+    FinanceService = None  # type: ignore
+
 logger = logging.getLogger("assistant")
 
 
@@ -261,6 +271,17 @@ async def run_bot(settings: Settings) -> None:
             logger.info("🤖 Nargis owner inbox router registered.")
         except Exception as _nr_err:
             logger.warning("Could not register Nargis router: %s", _nr_err)
+
+    # Nargis personal finance router
+    if _FINANCE_AVAILABLE and settings.owner_id:
+        try:
+            finance_service = FinanceService()
+            finance_router = build_finance_router(finance_service, settings.owner_id, assistant.generator)
+            dp.include_router(finance_router)
+            logger.info("💰 Nargis personal finance router registered.")
+        except Exception as _fin_err:
+            logger.warning("Could not register Finance router: %s", _fin_err)
+
     dp.include_router(discipline_router)
     dp.include_router(build_router(assistant))
 
@@ -277,6 +298,7 @@ async def run_bot(settings: Settings) -> None:
         await bot.set_my_commands(
             [
                 BotCommand(command="start", description="🚀 Bosh sahifa va menyuni ochish"),
+                BotCommand(command="finance", description="💰 Shaxsiy moliya boshqaruvi"),
                 BotCommand(command="discipline", description="🎯 Intizom boshqaruv paneli"),
                 BotCommand(command="today", description="📋 Bugungi reja va vazifalar"),
                 BotCommand(command="focus", description="⏳ Fokus (Pomodoro) taymer"),
@@ -285,6 +307,8 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="report", description="📊 Kunlik intizom hisoboti"),
                 BotCommand(command="week", description="📈 Haftalik tahlil"),
                 BotCommand(command="score", description="🏆 Nargis intizom bali"),
+                BotCommand(command="budget", description="🎯 Oylik byudjet holati"),
+                BotCommand(command="pendingfinance", description="⏳ Kutilayotgan tranzaksiyalar"),
                 BotCommand(command="messages", description="📥 Kiruvchi xabarlar"),
                 BotCommand(command="important", description="🔥 Muhim xabarlar"),
                 BotCommand(command="contacts", description="👥 Kontaktlar va leadlar"),

@@ -20,16 +20,16 @@ def main_reply_keyboard() -> ReplyKeyboardMarkup:
             KeyboardButton(text="📋 Bugungi reja"),
         ],
         [
+            KeyboardButton(text="💰 Moliya"),
+            KeyboardButton(text="🏆 Nargis ball"),
+        ],
+        [
             KeyboardButton(text="⏳ Fokus (Pomodoro)"),
             KeyboardButton(text="🔥 Odatlar"),
         ],
         [
             KeyboardButton(text="📥 Xabarlar"),
-            KeyboardButton(text="🏆 Nargis ball"),
-        ],
-        [
             KeyboardButton(text="📊 Kunlik hisobot"),
-            KeyboardButton(text="⚙️ Sozlamalar"),
         ],
     ]
     return ReplyKeyboardMarkup(

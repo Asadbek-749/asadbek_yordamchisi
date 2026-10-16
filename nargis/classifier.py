@@ -192,24 +192,16 @@ class IntentClassifier:
         self.ai = ai_generator
 
     async def classify(self, message_text: str) -> MessageClassification:
-        """Classify message. Uses AI if available, otherwise rule-based."""
-        # Quick rule-based pre-check for simple greetings
-        lower = message_text.lower().strip()
-        if len(lower) <= 20 and any(k in lower for k in _GREETING_KEYWORDS):
-            return MessageClassification(
-                intents=[Intent.GREETING],
-                urgency=UrgencyLevel.LOW,
-                importance_score=15,
-                requires_owner=False,
-            )
+        """Classify message. Uses fast deterministic rules first, falls back to AI if UNKNOWN."""
+        rule_res = _rule_classify(message_text)
+        if rule_res.primary_intent != Intent.UNKNOWN or self.ai is None:
+            return rule_res
 
-        if self.ai is not None:
-            try:
-                return await self._ai_classify(message_text)
-            except Exception as e:
-                logger.warning("AI classification failed, using rules: %s", e)
-
-        return _rule_classify(message_text)
+        try:
+            return await self._ai_classify(message_text)
+        except Exception as e:
+            logger.warning("AI classification failed, using rules: %s", e)
+            return rule_res
 
     async def _ai_classify(self, message_text: str) -> MessageClassification:
         """Use AI to classify the message."""

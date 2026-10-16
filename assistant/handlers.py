@@ -77,7 +77,7 @@ def build_router(assistant: Assistant) -> Router:
     async def cmd_other_start(message: Message) -> None:
         await message.answer(
             "🌸 <b>Assalomu alaykum!</b>\n\n"
-            "Men <b>Asadbek ustozning shaxsiy AI assistentiman</b>. Ismim <b>Nargis</b> 🤖\n\n"
+            "Men <b>Asadbek ustozning shaxsiy yordamchi boti — AI assistentiman</b>. Ismim <b>Nargis</b> 🤖\n\n"
             "Asadbek ustoz hozir darsda yoki ish bilan band bo'lishlari mumkin. "
             "Sizga qanday yordam bera olaman?\n\n"
             "💬 <i>(Kurslar, konsultatsiyalar, hamkorlik yoki boshqa savollaringiz bo'lsa, "

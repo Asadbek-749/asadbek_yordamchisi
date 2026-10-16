@@ -140,12 +140,88 @@ class DisciplineScheduler:
                     await repo.record_reminder_delivered(key, self.owner_id, "morning_plan")
                     await self._send_morning_plan(local_now.date())
 
-            # 2. Evening report (e.g. 21:00)
+            # 2. Evening report and finance close (e.g. 21:00)
             if local_time_str == settings.evening_report_time:
                 key = f"evening_{self.owner_id}_{local_date_str}"
                 if not await repo.is_reminder_delivered(key):
                     await repo.record_reminder_delivered(key, self.owner_id, "evening_report")
                     await self._send_evening_review(local_now.date())
+                    await self._send_evening_finance_check(local_now.date())
+
+            # 3. Weekly finance & discipline report on Sunday at 20:00
+            if local_now.weekday() == 6 and local_time_str == "20:00":
+                w_key = f"weekly_report_{self.owner_id}_{local_date_str}"
+                if not await repo.is_reminder_delivered(w_key):
+                    await repo.record_reminder_delivered(w_key, self.owner_id, "weekly_report")
+                    await self._send_weekly_master_report(local_now.date())
+
+            # 4. Check monthly budget alerts periodically
+            period_key = local_now.strftime("%Y-%m")
+            try:
+                from finance.service import FinanceService
+                fin_svc = FinanceService()
+                alerts = await fin_svc.check_budget_alerts(self.owner_id, period_key)
+                for alert in alerts:
+                    await self.bot.send_message(self.owner_id, alert, parse_mode="HTML")
+            except Exception as _b_err:
+                logger.warning("Budget alert check error: %s", _b_err)
+
+    async def _send_evening_finance_check(self, today: datetime.date) -> None:
+        """Remind owner to record today's income and expenses if not already done."""
+        try:
+            from finance.service import FinanceService
+            from finance.keyboards import main_finance_keyboard
+            fin_svc = FinanceService()
+            summary = await fin_svc.get_daily_summary(self.owner_id, today)
+
+            pending_count = summary.get("pending_count", 0)
+            pending_text = ""
+            if pending_count > 0:
+                pending_text = f"\n\n⏳ <b>Eslatma:</b> Sizda <b>{pending_count} ta</b> tasdiqlanmagan (Pending) xarajat mavjud. Ularni /pendingfinance orqali tasdiqlang."
+
+            inc = fin_svc.format_money(summary["total_income"])
+            exp = fin_svc.format_money(summary["total_expense"])
+
+            text = (
+                f"💰 <b>KUN YAKUNI — MOLIYAVIY HISOBOT</b>\n\n"
+                f"Bugungi tasdiqlangan holat:\n"
+                f"• Daromad: {inc}\n"
+                f"• Xarajat: {exp}"
+                f"{pending_text}\n\n"
+                f"<i>Bugungi barcha daromad va xarajatlaringizni to'liq kiritdingizmi?</i>"
+            )
+            await self.bot.send_message(self.owner_id, text, parse_mode="HTML", reply_markup=main_finance_keyboard())
+        except Exception as e:
+            logger.error("Failed to send evening finance check: %s", e)
+
+    async def _send_weekly_master_report(self, today: datetime.date) -> None:
+        """Compose and deliver master weekly report combining discipline and finances."""
+        try:
+            from finance.service import FinanceService
+            fin_svc = FinanceService()
+            start = today - datetime.timedelta(days=6)
+            fin_summary = await fin_svc.get_weekly_summary(self.owner_id, start, today)
+
+            inc_str = fin_svc.format_money(fin_summary["total_income"])
+            exp_str = fin_svc.format_money(fin_summary["total_expense"])
+            net_str = fin_svc.format_money(fin_summary["net_balance"])
+            net_prefix = "+" if fin_summary["net_balance"] >= 0 else ""
+
+            text = (
+                f"📊 <b>NARGIS — HAFTALIK MASTER HISOBOT</b>\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 <b>MOLIYA:</b>\n"
+                f"• Daromad: {inc_str}\n"
+                f"• Xarajat: {exp_str}\n"
+                f"• Sof balans: <b>{net_prefix}{net_str}</b>\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔥 <b>INTIZOM:</b>\n"
+                f"Intizom paneli va haftalik xulosani /week orqali ko'rishingiz mumkin.\n\n"
+                f"<i>Barqarorlik va intizom — eng katta yutuq kaliti! 🤖 Nargis</i>"
+            )
+            await self.bot.send_message(self.owner_id, text, parse_mode="HTML")
+        except Exception as e:
+            logger.error("Failed to send weekly master report: %s", e)
 
     async def _send_morning_plan(self, today: datetime.date) -> None:
         """Compose and deliver daily morning planning message."""
