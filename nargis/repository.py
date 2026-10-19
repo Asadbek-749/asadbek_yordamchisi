@@ -369,15 +369,20 @@ def _score_to_level(score: int) -> str:
     return "DISCIPLINE_FAILURE"
 
 
-# Score deltas — spec §27
+# Score deltas — spec §18 & §27
 SCORE_DELTAS: dict[str, int] = {
-    "TASK_COMPLETED_IMPORTANT": +10,
+    "TASK_COMPLETED_NORMAL": +10,
+    "TASK_COMPLETED_IMPORTANT": +20,
     "TASK_COMPLETED_CRITICAL": +20,
     "FOCUS_COMPLETED": +10,
     "HABIT_COMPLETED": +5,
     "TASK_POSTPONED": -10,
+    "PLAN_NOT_SUBMITTED": -5,
+    "PLAN_DELAYED": -5,
+    "DEADLINE_MISSED": -15,
     "TASK_MISSED": -20,
     "TASK_MISSED_CRITICAL": -30,
     "PLAN_IGNORED": -10,
     "REPEATED_PROCRASTINATION": -15,
 }
+

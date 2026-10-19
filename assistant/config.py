@@ -14,6 +14,7 @@ from dotenv import dotenv_values
 SETTING_KEYS: Tuple[str, ...] = (
     "TELEGRAM_BOT_TOKEN",
     "OWNER_ID",
+    "OWNER_TELEGRAM_ID",
     "AUTO_SEND",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "CLAUDE_BIN",
@@ -167,11 +168,11 @@ def load_settings(
             )
 
     # 2. Owner ID
-    raw_owner = _get_str("OWNER_ID")
+    raw_owner = _get_str("OWNER_ID") or _get_str("OWNER_TELEGRAM_ID")
     owner_id: Optional[int] = None
     if require_telegram:
         if not raw_owner:
-            raise ConfigError(f"OWNER_ID is missing in {source_label}.")
+            raise ConfigError(f"OWNER_ID or OWNER_TELEGRAM_ID is missing in {source_label}.")
         if not raw_owner.isdigit():
             raise ConfigError(
                 f"OWNER_ID in {source_label} must be numeric only (e.g. 123456789)."

@@ -84,6 +84,25 @@ async def init_db(
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+        # Safe dynamic schema extensions for existing databases
+        alterations = [
+            "ALTER TABLE discipline_tasks ADD COLUMN postponement_count INTEGER DEFAULT 0",
+            "ALTER TABLE discipline_tasks ADD COLUMN delay_reason TEXT",
+            "ALTER TABLE discipline_tasks ADD COLUMN actual_minutes INTEGER",
+            "ALTER TABLE discipline_tasks ADD COLUMN started_at TIMESTAMP",
+            "ALTER TABLE nargis_messages ADD COLUMN chat_id BIGINT",
+            "ALTER TABLE nargis_messages ADD COLUMN sender_name VARCHAR(255)",
+            "ALTER TABLE nargis_messages ADD COLUMN sender_username VARCHAR(255)",
+            "ALTER TABLE nargis_messages ADD COLUMN is_deleted BOOLEAN DEFAULT 0",
+            "ALTER TABLE nargis_messages ADD COLUMN deleted_at TIMESTAMP",
+        ]
+        from sqlalchemy import text
+        for alt in alterations:
+            try:
+                await conn.execute(text(alt))
+            except Exception:
+                pass  # Column already exists or table freshly created
+
     logger.info("Database schema verified and ready.")
     return engine, factory
 

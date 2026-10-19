@@ -82,6 +82,85 @@ UZBEK_LATIN_WORDS = {
     "xush",
     "boshmisan",
     "uchrashamizmi",
+    "qonday",
+    "qandaysiz",
+    "qalesiz",
+    "qayerdasan",
+    "qayerdasiz",
+    "ishdami",
+    "ishdaman",
+    "aniq",
+    "tinchlikmi",
+    "ustoz",
+    "gaplashamiz",
+    "yozaman",
+    "yozing",
+    "ovqat",
+    "tushlik",
+    "dars",
+    "vazifa",
+    "ha",
+    "yoq",
+    "yo'q",
+}
+
+ENGLISH_WORDS = {
+    "hi",
+    "hello",
+    "how",
+    "are",
+    "you",
+    "free",
+    "tonight",
+    "see",
+    "at",
+    "clock",
+    "the",
+    "is",
+    "it",
+    "its",
+    "my",
+    "dog",
+    "dogs",
+    "ball",
+    "what",
+    "where",
+    "when",
+    "why",
+    "who",
+    "which",
+    "can",
+    "will",
+    "would",
+    "could",
+    "should",
+    "do",
+    "did",
+    "does",
+    "have",
+    "has",
+    "had",
+    "please",
+    "thanks",
+    "thank",
+    "good",
+    "morning",
+    "evening",
+    "night",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "sorry",
+    "help",
+    "today",
+    "tomorrow",
+    "time",
+    "task",
+    "project",
+    "finance",
+    "money",
+    "report",
 }
 
 UZBEK_SUFFIXES = (
@@ -95,6 +174,17 @@ UZBEK_SUFFIXES = (
     "asizmi",
     "ganman",
     "dingmi",
+    "daman",
+    "dasan",
+    "dami",
+    "gach",
+    "moqda",
+    "gancha",
+    "miz",
+    "siz",
+    "san",
+    "man",
+    "lar",
 )
 
 # Match Uzbek o'/g' with all apostrophe variants, excluding o'clock and possessive 's
@@ -137,11 +227,33 @@ def detect_language(text: str) -> Optional[str]:
     clean_latin = re.sub(r"[^a-z\s]", " ", text_norm)
     tokens = clean_latin.split()
 
+    if not tokens:
+        return None
+
+    uz_score = 0
+    en_score = 0
+
     for token in tokens:
         if token in UZBEK_LATIN_WORDS:
-            return "uz"
+            uz_score += 2
+        # Uzbek distinctive character 'q' not followed by 'u' (e.g. qonday, qalesan, aniq)
+        if "q" in token and "qu" not in token:
+            uz_score += 2
+        # Uzbek distinctive 'x' not in common english words
+        if "x" in token and token not in ENGLISH_WORDS:
+            uz_score += 1
         for suffix in UZBEK_SUFFIXES:
             if len(token) > len(suffix) and token.endswith(suffix):
-                return "uz"
+                uz_score += 1
+                break
 
-    return "en"
+        if token in ENGLISH_WORDS:
+            en_score += 2
+
+    if uz_score > en_score:
+        return "uz"
+    if en_score > uz_score:
+        return "en"
+
+    # Tie breaker: for this Uzbek assistant, default fallback is Uzbek ('uz')
+    return "uz"

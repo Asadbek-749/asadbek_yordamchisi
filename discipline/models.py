@@ -88,6 +88,12 @@ class DisciplineTask(Base):
     completed_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Nargis Boss 2.0 Accountability fields
+    postponement_count: Mapped[int] = mapped_column(Integer, default=0)
+    delay_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    actual_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -265,12 +271,19 @@ class NargisMessage(Base):
         Integer, ForeignKey("nargis_contacts.id", ondelete="CASCADE"), index=True, nullable=False
     )
     telegram_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
+    sender_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sender_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     business_connection_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
     direction: Mapped[str] = mapped_column(
         String(10), default="IN"
     )  # IN (from user), OUT (Nargis reply)
+
+    # Deletion tracking
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Classification
     intent: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -348,4 +361,97 @@ class DisciplineScoreEvent(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
     score_record: Mapped["DisciplineScore"] = relationship("DisciplineScore", back_populates="events")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NARGIS 2.0 GOALS, MEMORY, AND BOSS STATE MODELS
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DisciplineGoal(Base):
+    """High-level personal or professional goal (Goal -> Milestone -> Project -> Task)."""
+    __tablename__ = "discipline_goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(50), default="business")
+    deadline: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    milestones: Mapped[list["DisciplineMilestone"]] = relationship(
+        "DisciplineMilestone", back_populates="goal", cascade="all, delete-orphan"
+    )
+
+
+class DisciplineMilestone(Base):
+    """Milestone checkpoint under a Goal."""
+    __tablename__ = "discipline_milestones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    goal_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("discipline_goals.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    deadline: Mapped[Optional[datetime.date]] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="PENDING")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    goal: Mapped["DisciplineGoal"] = relationship("DisciplineGoal", back_populates="milestones")
+    projects: Mapped[list["DisciplineProject"]] = relationship(
+        "DisciplineProject", back_populates="milestone", cascade="all, delete-orphan"
+    )
+
+
+class DisciplineProject(Base):
+    """Project under a Milestone."""
+    __tablename__ = "discipline_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    milestone_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("discipline_milestones.id", ondelete="SET NULL"), index=True, nullable=True
+    )
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    milestone: Mapped[Optional["DisciplineMilestone"]] = relationship("DisciplineMilestone", back_populates="projects")
+
+
+class NargisMemory(Base):
+    """Memory item: SHORT_TERM, LONG_TERM, EPISODIC, SEMANTIC, PREFERENCE, BEHAVIORAL, FINANCIAL."""
+    __tablename__ = "nargis_memories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    memory_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True
+    )
+    key: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[int] = mapped_column(Integer, default=100)
+    source: Mapped[str] = mapped_column(String(50), default="conversation")
+    privacy_level: Mapped[str] = mapped_column(String(20), default="PRIVATE")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class NargisBossState(Base):
+    """Tracks state of daily accountability checks and escalation levels."""
+    __tablename__ = "nargis_boss_states"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    check_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    morning_level: Mapped[int] = mapped_column(Integer, default=0)
+    morning_completed: Mapped[bool] = mapped_column(Boolean, default=False)
+    midday_checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    evening_checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    evening_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    tomorrow_planned: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
 

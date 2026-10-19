@@ -117,7 +117,38 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         start = today - datetime.timedelta(days=today.weekday())  # Monday
         summary = await service.get_weekly_summary(owner_id, start, today)
         text = _format_weekly_summary_text(summary, service)
+
+        # Append Finance Intelligence week-over-week variance
+        from finance.intelligence import FinanceIntelligenceEngine
+        intel = FinanceIntelligenceEngine(owner_id)
+        comp = await intel.compare_weekly_spending(today)
+        var_msg = intel.generate_variance_message(comp)
+        if var_msg:
+            text += f"\n\n{var_msg}"
+
         await message.answer(text, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
+
+    @router.message(is_owner, Command("finance_compare"))
+    async def cmd_finance_compare(message: Message) -> None:
+        from finance.intelligence import FinanceIntelligenceEngine
+        intel = FinanceIntelligenceEngine(owner_id)
+        comp = await intel.compare_weekly_spending()
+        msg = intel.generate_variance_message(comp)
+        if msg:
+            await message.answer(msg, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
+        else:
+            pct = comp["pct_change"]
+            curr = service.format_money(comp["current_total"])
+            prev = service.format_money(comp["previous_total"])
+            await message.answer(
+                f"📊 <b>Haftalik taqqoslash:</b>\n\n"
+                f"• Bu hafta: <b>{curr}</b>\n"
+                f"• O'tgan hafta: <b>{prev}</b>\n"
+                f"• O'zgarish: <b>{pct}%</b>\n\n"
+                f"Xarajatlarda keskin o'sish kuzatilmadi ✅",
+                parse_mode="HTML",
+                reply_markup=back_to_finance_keyboard(),
+            )
 
     # ─────────────────────────────────────────────────────────────────────────
     # /finance_month — Oylik moliyaviy hisobot
@@ -263,25 +294,18 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             except Exception as _disp_err:
                 logger.warning("Nargis dispatcher error on voice: %s", _disp_err)
 
-            # 2. Check if this is a financial statement (expense or income)
-            fin_result = await extractor.extract(transcription)
-            if fin_result.transactions or fin_result.is_ambiguous:
-                await _process_finance_text(message, transcription, service, extractor, owner_id, source="voice")
-            else:
-                # General conversation or task from Asadbek to Nargis copilot
-                if hasattr(ai_generator, "generate"):
-                    from assistant.prompts import build_owner_copilot_prompt
-                    from assistant.service import read_profile
-                    from pathlib import Path
-                    profile = read_profile(Path("profile.md"))
-                    sys_prompt = build_owner_copilot_prompt(profile, datetime.datetime.now(datetime.timezone.utc))
-                    reply = await ai_generator.generate(sys_prompt, transcription)
-                    if reply and reply.strip() != "[SKIP]":
-                        await message.answer(f"🤖 <b>Nargis:</b>\n\n{reply}", parse_mode="HTML")
-                    else:
-                        await message.answer("🤖 <b>Nargis:</b>\n\nOvozingizni eshitdim, Asadbek ustoz. Sizga qanday yordam bera olaman?", parse_mode="HTML")
-                else:
-                    await message.answer("🤖 <b>Nargis:</b>\n\nOvozli xabaringiz qabul qilindi, Asadbek ustoz.", parse_mode="HTML")
+            # 2. Process via VoiceIntelligenceEngine (handles finance, tasks, plans, queries, status)
+            from nargis.voice import VoiceIntelligenceEngine
+            voice_engine = VoiceIntelligenceEngine(ai_generator=ai_generator, owner_id=owner_id)
+            res = await voice_engine.process_voice_action(
+                transcript=transcription,
+                user_id=owner_id,
+                bot=bot,
+                source="voice",
+            )
+            resp_text = res.get("response_text") or "Ovozingiz qabul qilindi, Asadbek ustoz."
+            markup = res.get("reply_markup")
+            await message.answer(resp_text, parse_mode="HTML", reply_markup=markup)
         except Exception as e:
             logger.error("Failed to process owner voice: %s", e, exc_info=True)
             await status_msg.edit_text(

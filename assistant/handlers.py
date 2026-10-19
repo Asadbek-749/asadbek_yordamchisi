@@ -12,7 +12,7 @@ from assistant.service import Assistant
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_UPDATES = ["message", "business_connection", "business_message", "callback_query"]
+ALLOWED_UPDATES = ["message", "business_connection", "business_message", "deleted_business_messages", "callback_query"]
 
 
 def build_router(assistant: Assistant) -> Router:
@@ -23,6 +23,12 @@ def build_router(assistant: Assistant) -> Router:
     @router.business_message()
     async def handle_business_message(message: Message) -> None:
         await assistant.on_business_message(message.bot, message)
+
+    # 1.5 Deleted business messages monitoring
+    @router.deleted_business_messages()
+    async def handle_deleted_business_messages(event: Any) -> None:
+        if hasattr(assistant, "on_deleted_business_messages"):
+            await assistant.on_deleted_business_messages(event.bot, event)
 
     # 2. Business connections
     @router.business_connection()

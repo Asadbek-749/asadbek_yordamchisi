@@ -26,6 +26,11 @@ class DisciplineScheduler:
         self.owner_id = owner_id
         self.scheduler = AsyncIOScheduler()
         self._is_running = False
+        try:
+            from nargis.proactive import ProactiveEngine
+            self.proactive_engine = ProactiveEngine(owner_id, bot)
+        except Exception:
+            self.proactive_engine = None
 
     def start(self) -> None:
         """Configure jobs and start the scheduler."""
@@ -56,6 +61,8 @@ class DisciplineScheduler:
         """Master periodic check running every minute."""
         now_utc = utcnow()
         try:
+            if self.proactive_engine:
+                await self.proactive_engine.execute_minute_tick(now_utc)
             await self._check_focus_sessions(now_utc)
             await self._check_upcoming_deadlines(now_utc)
             await self._check_morning_and_evening_schedules(now_utc)

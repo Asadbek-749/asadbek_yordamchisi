@@ -502,6 +502,44 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
         await _show_settings(callback.message, service, owner_id, edit=True)
         await callback.answer(f"Yakshanba rejimi: {new_mode}")
 
+    # ==================== NARGIS 2.0 BOSS COMMANDS ====================
+    @router.message(is_owner, Command("postpone"))
+    async def cmd_postpone(message: Message) -> None:
+        """Strict postponement guard: 3+ delays require reason."""
+        parts = message.text.split(maxsplit=2)
+        if len(parts) > 1 and parts[1].isdigit():
+            task_id = int(parts[1])
+            reason = parts[2] if len(parts) > 2 else None
+            from nargis.boss import AIBossEngine
+            boss = AIBossEngine(owner_id)
+            res = await boss.handle_postponement_request(task_id, reason=reason)
+            await message.answer(res["message"], parse_mode="HTML")
+            return
+        await message.answer(
+            "ℹ️ Vazifani ko'chirish uchun: <code>/postpone [task_id] [sabab]</code> yozing.\n"
+            "<i>(Eslatma: 3 martadan ortiq ko'chirilgan vazifalar uchun sabab ko'rsatish shart!)</i>",
+            parse_mode="HTML",
+        )
+
+    @router.message(is_owner, Command("goals"))
+    async def cmd_goals(message: Message) -> None:
+        """Display goals and milestones hierarchy."""
+        from nargis.goals import GoalsEngine
+        goals_engine = GoalsEngine(owner_id)
+        summary = await goals_engine.get_active_goals_summary()
+        await message.answer(summary, parse_mode="HTML")
+
+    @router.message(is_owner, Command("memories"))
+    async def cmd_memories(message: Message) -> None:
+        """Display persistent memory context."""
+        from nargis.memory import MemoryEngine
+        mem_engine = MemoryEngine(owner_id)
+        ctx = await mem_engine.get_relevant_context()
+        if ctx:
+            await message.answer(f"🧠 <b>Nargis Xotirasi:</b>\n\n<pre>{ctx}</pre>", parse_mode="HTML")
+        else:
+            await message.answer("🧠 Nargis xotirasida hali faol kontekst yozuvlari mavjud emas.", parse_mode="HTML")
+
     return router
 
 

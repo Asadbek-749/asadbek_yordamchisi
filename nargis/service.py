@@ -188,9 +188,11 @@ class NargisDisciplineScoreService:
         event_type: str,
         reason: Optional[str] = None,
         task_id: Optional[int] = None,
+        delta: Optional[int] = None,
     ) -> tuple[int, str, int]:
         """Apply a positive score event. Returns (new_score, level, delta)."""
-        delta = SCORE_DELTAS.get(event_type, 0)
+        if delta is None:
+            delta = SCORE_DELTAS.get(event_type, 0)
         if delta == 0:
             logger.warning("Unknown score event type: %s", event_type)
             return await self._get_current(user_id)
@@ -204,6 +206,7 @@ class NargisDisciplineScoreService:
                 reason=reason,
                 task_id=task_id,
             )
+            await session.commit()
             return score_rec.score, score_rec.level, delta
 
     async def penalize(
@@ -212,9 +215,13 @@ class NargisDisciplineScoreService:
         event_type: str,
         reason: Optional[str] = None,
         task_id: Optional[int] = None,
+        delta: Optional[int] = None,
     ) -> tuple[int, str, int]:
         """Apply a negative score event. Returns (new_score, level, delta)."""
-        delta = SCORE_DELTAS.get(event_type, 0)
+        if delta is None:
+            delta = SCORE_DELTAS.get(event_type, -10)
+        if delta > 0:
+            delta = -delta
         async with get_session() as session:
             repo = NargisRepository(session)
             score_rec, _ = await repo.apply_score_event(
@@ -224,6 +231,7 @@ class NargisDisciplineScoreService:
                 reason=reason,
                 task_id=task_id,
             )
+            await session.commit()
             return score_rec.score, score_rec.level, delta
 
     async def _get_current(self, user_id: int) -> tuple[int, str, int]:

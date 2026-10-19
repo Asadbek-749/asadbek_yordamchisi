@@ -289,6 +289,24 @@ class Assistant:
             conn, chat_id, role="other", name=sender_name, text=desc, lang=lang, ts=self.clock()
         )
 
+        # 7b. Nargis Communication Manager: store immutable message for lead triage & deletion monitoring
+        try:
+            from discipline.db import is_db_initialized
+            if is_db_initialized() and self.settings.owner_id:
+                from nargis.communication import CommunicationManager
+                comm = CommunicationManager(self.settings.owner_id)
+                await comm.handle_external_message(
+                    sender_id=from_id,
+                    sender_name=sender_name,
+                    sender_username=sender_username,
+                    message_text=desc,
+                    chat_id=chat_id,
+                    telegram_message_id=msg_id,
+                    business_connection_id=conn,
+                )
+        except Exception as _cm_err:
+            logger.warning("CommunicationManager business intake error: %s", _cm_err)
+
         # 7a. Nargis: classify message + notify owner if important
         classification = None
         if self._nargis_agent is not None:
@@ -481,6 +499,35 @@ class Assistant:
                 getattr(connection, "is_enabled", False),
                 can_reply(connection),
             )
+
+    async def on_deleted_business_messages(self, bot: Any, event: Any) -> None:
+        """Handle deleted_business_messages event from Telegram."""
+        conn_id = getattr(event, "business_connection_id", None)
+        chat = getattr(event, "chat", None)
+        chat_id = getattr(chat, "id", None) if chat else None
+        message_ids = getattr(event, "message_ids", []) or []
+
+        if not message_ids or not chat_id:
+            return
+
+        try:
+            from discipline.db import is_db_initialized
+            if is_db_initialized() and self.settings.owner_id:
+                from nargis.communication import CommunicationManager
+                comm = CommunicationManager(self.settings.owner_id)
+                deleted_alerts = await comm.record_deleted_message(
+                    chat_id=chat_id,
+                    message_ids=message_ids,
+                    business_connection_id=conn_id,
+                )
+                for alert_item in deleted_alerts:
+                    await bot.send_message(
+                        self.settings.owner_id,
+                        alert_item["preview_alert"],
+                        parse_mode="HTML",
+                    )
+        except Exception as e:
+            logger.error("Failed to process deleted business messages: %s", e)
 
     def pause(self) -> None:
         """Pause assistant replies."""

@@ -49,6 +49,23 @@ class DisciplineRepository:
         return settings
 
     # ==================== DAILY PLANS ====================
+    async def get_daily_plan(self, user_id: int, plan_date: datetime.date) -> Optional[DailyPlan]:
+        stmt = select(DailyPlan).where(
+            and_(DailyPlan.user_id == user_id, DailyPlan.plan_date == plan_date)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create_daily_plan(
+        self, user_id: int, plan_date: datetime.date, top_three: Optional[str] = None
+    ) -> DailyPlan:
+        plan = await self.get_or_create_daily_plan(user_id, plan_date)
+        if top_three is not None:
+            plan.top_three_tasks = top_three
+            plan.is_confirmed = True
+        await self.session.flush()
+        return plan
+
     async def get_or_create_daily_plan(self, user_id: int, plan_date: datetime.date) -> DailyPlan:
         stmt = select(DailyPlan).where(
             and_(DailyPlan.user_id == user_id, DailyPlan.plan_date == plan_date)
@@ -137,6 +154,10 @@ class DisciplineRepository:
         )
         result = await self.session.execute(query)
         return result.scalars().all()
+
+    async def get_tasks_for_date(self, user_id: int, date: datetime.date) -> Sequence[DisciplineTask]:
+        """Fetch all tasks for a specific date."""
+        return await self.list_tasks(user_id=user_id, date=date)
 
     async def list_active_tasks(self, user_id: int) -> Sequence[DisciplineTask]:
         """List all uncompleted tasks for user."""
