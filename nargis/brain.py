@@ -111,9 +111,20 @@ class NargisBrain:
 
         import re
 
-        # 1. Finance Query checks (e.g. "bu hafta qancha pul sarfladim?", "qancha xarajat qildim?")
-        if "qancha" in lower and any(kw in lower for kw in ("sarfladim", "xarajat", "pul", "ketdi", "ishlatdim", "bo'ldi")):
-            period = "week" if "hafta" in lower else ("month" if "oy" in lower else "today")
+        # 1. Finance Query checks (e.g. "Meni kechagi xarajatlarim qancha edi?", "bu hafta qancha pul sarfladim?")
+        is_fin_query = (
+            any(q_word in lower for q_word in ("qancha", "nechi", "qanchaga", "ko'rsat", "hisobot"))
+            and any(f_word in lower for f_word in ("sarfladim", "xarajat", "xarajatlarim", "pul", "ketdi", "ishlatdim", "bo'ldi", "tushdi", "daromad", "moliya"))
+        )
+        if is_fin_query:
+            if "kecha" in lower or "kechagi" in lower:
+                period = "yesterday"
+            elif "hafta" in lower:
+                period = "week"
+            elif "oy" in lower:
+                period = "month"
+            else:
+                period = "today"
             return BrainActionRequest(
                 intent=BrainIntent.FINANCE_QUERY,
                 confidence=ConfidenceLevel.HIGH,

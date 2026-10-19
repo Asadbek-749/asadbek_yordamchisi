@@ -192,3 +192,22 @@ async def test_voice_discipline_query(voice_env: FinanceService):
     assert "intizom holatingiz" in res["response_text"].lower()
     assert "intizom bali" in res["response_text"].lower()
 
+
+@pytest.mark.asyncio
+async def test_finance_query_yesterday(voice_env: FinanceService):
+    owner_id = 5146977644
+    engine = VoiceIntelligenceEngine(ai_generator=DummyAI(), owner_id=owner_id)
+
+    # User's exact prompt: "Meni kechagi xarajatlarim qancha edi"
+    res = await engine.process_voice_action(
+        transcript="Meni kechagi xarajatlarim qancha edi",
+        user_id=owner_id,
+        bot=None,
+        source="text",
+    )
+    assert res["success"] is True
+    assert res["intent"] == BrainIntent.FINANCE_QUERY.value
+    assert "Kechagi moliyaviy hisobot" in res["response_text"]
+    assert "Xarajat:" in res["response_text"]
+
+

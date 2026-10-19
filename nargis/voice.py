@@ -158,8 +158,22 @@ class VoiceIntelligenceEngine:
             now_tz = datetime.datetime.now(ZoneInfo("Asia/Tashkent"))
             today = now_tz.date()
 
-            period = action_req.entities.get("period", "week")
-            if period == "week":
+            period = action_req.entities.get("period", "today")
+            if period == "yesterday":
+                target_date = today - datetime.timedelta(days=1)
+                daily = await service.get_daily_summary(self.owner_id, target_date)
+                total = daily.get("total_expense", Decimal("0.00"))
+                income = daily.get("total_income", Decimal("0.00"))
+                return {
+                    "success": True,
+                    "intent": action_req.intent.value,
+                    "response_text": (
+                        f"📊 <b>Kechagi moliyaviy hisobot ({target_date.strftime('%d.%m.%Y')}):</b>\n\n"
+                        f"• 💸 Xarajat: <b>{service.format_money(total)}</b>\n"
+                        f"• 💰 Daromad: <b>{service.format_money(income)}</b>"
+                    ),
+                }
+            elif period == "week":
                 start_of_week = today - datetime.timedelta(days=today.weekday())
                 summary = await service.get_weekly_summary(self.owner_id, start_of_week, today)
                 total = summary.get("total_expense", Decimal("0.00"))
@@ -174,13 +188,32 @@ class VoiceIntelligenceEngine:
                         f"Eng ko'p xarajat: <b>{top_cat}</b> kategoriyasida."
                     ),
                 }
-            else:
-                daily = await service.get_daily_summary(self.owner_id, today)
-                total = daily.get("total_expense", Decimal("0.00"))
+            elif period == "month":
+                start_of_month = today.replace(day=1)
+                monthly = await service.get_monthly_summary(self.owner_id, start_of_month, today)
+                total = monthly.get("total_expense", Decimal("0.00"))
+                income = monthly.get("total_income", Decimal("0.00"))
                 return {
                     "success": True,
                     "intent": action_req.intent.value,
-                    "response_text": f"📊 Bugun jami <b>{service.format_money(total)}</b> xarajat qildingiz.",
+                    "response_text": (
+                        f"📊 <b>Oylik moliyaviy hisobot ({today.strftime('%B %Y')}):</b>\n\n"
+                        f"• 💸 Jami xarajat: <b>{service.format_money(total)}</b>\n"
+                        f"• 💰 Jami daromad: <b>{service.format_money(income)}</b>"
+                    ),
+                }
+            else:
+                daily = await service.get_daily_summary(self.owner_id, today)
+                total = daily.get("total_expense", Decimal("0.00"))
+                income = daily.get("total_income", Decimal("0.00"))
+                return {
+                    "success": True,
+                    "intent": action_req.intent.value,
+                    "response_text": (
+                        f"📊 <b>Bugungi moliyaviy hisobot ({today.strftime('%d.%m.%Y')}):</b>\n\n"
+                        f"• 💸 Xarajat: <b>{service.format_money(total)}</b>\n"
+                        f"• 💰 Daromad: <b>{service.format_money(income)}</b>"
+                    ),
                 }
 
         # 4. Tasks: Create Task with deadline

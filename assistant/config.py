@@ -60,7 +60,7 @@ class Settings:
     profile_path: Path = field(default_factory=lambda: Path("profile.md"))
     from_environment: bool = False
     gemini_api_key: Optional[str] = field(default=None, repr=False)
-    gemini_model: str = "gemini-3.1-flash-lite"
+    gemini_model: str = "gemini-3.5-flash-lite"
     ai_provider: str = "claude"
     webapp_url: Optional[str] = None
 
@@ -201,7 +201,7 @@ def load_settings(
     # 4. Gemini and AI Provider settings
     raw_gemini_key = _get_str("GEMINI_API_KEY")
     gemini_api_key = raw_gemini_key if raw_gemini_key else None
-    gemini_model = _get_str("GEMINI_MODEL") or "gemini-3.1-flash-lite"
+    gemini_model = _get_str("GEMINI_MODEL") or "gemini-3.5-flash-lite"
 
     raw_provider = _get_str("AI_PROVIDER")
     if raw_provider:

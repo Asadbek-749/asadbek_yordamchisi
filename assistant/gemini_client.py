@@ -13,7 +13,7 @@ from assistant.claude_cli import ClaudeAuthError, ClaudeError, ClaudeLimitError,
 logger = logging.getLogger(__name__)
 
 # Fast, reliable lightweight models to fall back to if the selected model is experiencing high demand (503)
-DEFAULT_FALLBACK_MODELS = ("gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.5-flash")
+DEFAULT_FALLBACK_MODELS = ("gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.1-flash-lite")
 
 
 class GeminiError(ClaudeError):
@@ -35,12 +35,12 @@ class GeminiClient:
         self,
         api_key: str,
         *,
-        model: str = "gemini-3.1-flash-lite",
+        model: str = "gemini-3.5-flash-lite",
         timeout: int = 60,
         retry_delay: float = 1.0,
     ) -> None:
         self.api_key = api_key.strip()
-        self.model = model.strip() or "gemini-3.1-flash-lite"
+        self.model = model.strip() or "gemini-3.5-flash-lite"
         self.timeout = max(1, timeout)
         self.retry_delay = retry_delay
 

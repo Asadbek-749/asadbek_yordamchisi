@@ -626,6 +626,29 @@ class Assistant:
                 except Exception as _disp_err:
                     logger.warning("Nargis dispatcher check error: %s", _disp_err)
 
+                # Route through Nargis Action Engine (handles finance queries, tasks, plans, discipline status, expense/income)
+                try:
+                    from nargis.voice import VoiceIntelligenceEngine
+                    from nargis.brain import BrainIntent
+                    action_engine = VoiceIntelligenceEngine(ai_generator=self.generator, owner_id=from_id)
+                    intent_res = action_engine.brain.analyze_intent(raw_text, is_owner=True)
+
+                    if intent_res.intent != BrainIntent.COPILOT_CHAT:
+                        res = await action_engine.process_voice_action(
+                            transcript=raw_text,
+                            user_id=from_id,
+                            bot=bot,
+                            source="text",
+                        )
+                        resp_text = res.get("response_text")
+                        if resp_text:
+                            markup = res.get("reply_markup")
+                            self.history.add(conn, chat_id, role="owner", name="Nargis", text=resp_text, lang="uz", ts=self.clock())
+                            await message.answer(resp_text, parse_mode="HTML", reply_markup=markup)
+                            return
+                except Exception as _act_err:
+                    logger.warning("Nargis Action engine error on text: %s", _act_err, exc_info=True)
+
                 try:
                     from finance.extractor import FinanceExtractor
                     from finance.handlers import _process_finance_text
