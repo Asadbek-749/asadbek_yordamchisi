@@ -23,8 +23,8 @@ class VoiceIntelligenceEngine:
 
     def __init__(
         self,
-        ai_generator: Any,
-        owner_id: int,
+        ai_generator: Optional[Any] = None,
+        owner_id: int = 0,
         brain: Optional[NargisBrain] = None,
     ) -> None:
         self.ai = ai_generator
@@ -52,7 +52,7 @@ class VoiceIntelligenceEngine:
         self,
         transcript: str,
         user_id: int,
-        bot: Any,
+        bot: Optional[Any] = None,
         source: str = "voice",
     ) -> Dict[str, Any]:
         """

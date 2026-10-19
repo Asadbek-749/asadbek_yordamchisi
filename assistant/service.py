@@ -609,7 +609,13 @@ class Assistant:
 
         # If sender is the owner, check for message dispatch first, then finance input, else act as direct copilot
         if is_owner:
-            from discipline.db import is_db_initialized
+            from discipline.db import is_db_initialized, init_db
+            if not is_db_initialized():
+                try:
+                    await init_db(data_dir=self.settings.data_dir)
+                except Exception as _init_err:
+                    logger.warning("Could not auto-init db: %s", _init_err)
+
             if is_db_initialized():
                 try:
                     from nargis.dispatcher import get_message_dispatcher

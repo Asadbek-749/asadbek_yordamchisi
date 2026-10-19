@@ -80,6 +80,11 @@ async def init_db(
     engine, factory = create_engine_and_factory(resolved_url)
     _engine = engine
     _session_factory = factory
+    # Ensure all domain models are registered in Base.metadata before create_all
+    try:
+        import finance.models  # noqa: F401
+    except ImportError:
+        pass
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
