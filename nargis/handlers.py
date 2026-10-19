@@ -22,6 +22,30 @@ def build_nargis_owner_router(owner_id: int) -> Router:
     score_svc = NargisDisciplineScoreService()
 
     # ─────────────────────────────────────────────
+    def _format_sender(msg: NargisMessage) -> str:
+        contact = getattr(msg, "contact", None)
+        if contact:
+            parts = [contact.first_name or "", contact.last_name or ""]
+            full = " ".join(p for p in parts if p).strip()
+            if full and contact.username:
+                return f"{full} (@{contact.username})"
+            if contact.username:
+                return f"@{contact.username}"
+            if full:
+                return full
+            if contact.telegram_id:
+                return f"Foydalanuvchi (ID: {contact.telegram_id})"
+        if msg.sender_name or msg.sender_username:
+            if msg.sender_name and msg.sender_username:
+                return f"{msg.sender_name} (@{msg.sender_username})"
+            if msg.sender_username:
+                return f"@{msg.sender_username}"
+            return msg.sender_name or "Noma'lum"
+        if msg.chat_id:
+            return f"Chat ID: {msg.chat_id}"
+        return "Noma'lum foydalanuvchi"
+
+    # ─────────────────────────────────────────────
     # /messages — so'nggi kiruvchi xabarlar
     # ─────────────────────────────────────────────
     @router.message(is_owner, Command("messages"))
@@ -41,14 +65,18 @@ def build_nargis_owner_router(owner_id: int) -> Router:
                 "NORMAL": "📩",
                 "LOW": "💬",
             }.get(msg.urgency, "📩")
-            status_icon = "🔴" if msg.status == "NEW" else "✅"
+            is_del = getattr(msg, "is_deleted", False) or msg.status == "DELETED"
+            status_icon = "🗑️" if is_del else ("🔴" if msg.status == "NEW" else "✅")
+            deleted_text = " <i>[O'chirilgan]</i>" if is_del else ""
+            sender = _format_sender(msg)
             preview = msg.content[:60].replace("\n", " ")
             if len(msg.content) > 60:
                 preview += "..."
             lines.append(
-                f"{i}. {urgency_icon} {status_icon} <b>#{msg.id}</b>\n"
-                f"   {msg.intent or '?'} | {msg.urgency}\n"
-                f"   <i>{preview}</i>\n"
+                f"{i}. {urgency_icon} {status_icon} <b>#{msg.id}</b>{deleted_text}\n"
+                f"   👤 <b>Kimdan:</b> {sender}\n"
+                f"   🏷 {msg.intent or '?'} | {msg.urgency}\n"
+                f"   💬 <i>«{preview}»</i>\n"
             )
 
         await message.answer("\n".join(lines), parse_mode="HTML")
@@ -67,6 +95,7 @@ def build_nargis_owner_router(owner_id: int) -> Router:
         lines = ["🔥 <b>Muhim va kritik xabarlar:</b>\n"]
         for msg in messages:
             urgency_icon = "🚨" if msg.urgency == "CRITICAL" else "🔥"
+            sender = _format_sender(msg)
             preview = msg.content[:120].replace("\n", " ")
             if len(msg.content) > 120:
                 preview += "..."
@@ -74,6 +103,7 @@ def build_nargis_owner_router(owner_id: int) -> Router:
             reason = f"\n   📌 Sabab: {msg.reason_summary}" if msg.reason_summary else ""
             lines.append(
                 f"{urgency_icon} <b>#{msg.id}</b> | {msg.urgency} | {msg.status}\n"
+                f"   👤 <b>Kimdan:</b> {sender}\n"
                 f"   <i>{preview}</i>"
                 f"{deadline}{reason}\n"
             )

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 
 from discipline.db import get_session
 from discipline.models import NargisContact, NargisMessage, utcnow
@@ -140,6 +141,8 @@ class CommunicationManager:
         chat_id: int,
         message_ids: List[int],
         business_connection_id: Optional[str] = None,
+        chat_name: Optional[str] = None,
+        chat_username: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Record deletion event when Telegram notifies deleted_business_messages.
@@ -150,9 +153,13 @@ class CommunicationManager:
 
         async with get_session() as session:
             for msg_id in message_ids:
-                stmt = select(NargisMessage).where(
-                    NargisMessage.telegram_message_id == msg_id,
-                    NargisMessage.is_deleted == False,
+                stmt = (
+                    select(NargisMessage)
+                    .options(selectinload(NargisMessage.contact))
+                    .where(
+                        NargisMessage.telegram_message_id == msg_id,
+                        NargisMessage.is_deleted == False,
+                    )
                 )
                 if business_connection_id:
                     stmt = stmt.where(NargisMessage.business_connection_id == business_connection_id)
@@ -165,8 +172,43 @@ class CommunicationManager:
                     record.deleted_at = now_dt
                     record.status = "DELETED"
 
+                    # If sender_name was missing, backfill from chat_name / contact
+                    if chat_name and not record.sender_name:
+                        record.sender_name = chat_name
+                    if chat_username and not record.sender_username:
+                        record.sender_username = chat_username
+
                     time_str = record.created_at.astimezone(ZoneInfo("Asia/Tashkent")).strftime("%H:%M, %d-%m-%Y")
-                    user_tag = f"@{record.sender_username}" if record.sender_username else (record.sender_name or "Noma'lum")
+
+                    # Resolve sender richly
+                    user_tag = "Noma'lum foydalanuvchi"
+                    c = getattr(record, "contact", None)
+                    if c:
+                        c_name = f"{c.first_name or ''} {c.last_name or ''}".strip()
+                        if c_name and c.username:
+                            user_tag = f"{c_name} (@{c.username})"
+                        elif c.username:
+                            user_tag = f"@{c.username}"
+                        elif c_name:
+                            user_tag = c_name
+                        elif c.telegram_id:
+                            user_tag = f"Foydalanuvchi (ID: {c.telegram_id})"
+                    elif record.sender_name or record.sender_username:
+                        if record.sender_name and record.sender_username:
+                            user_tag = f"{record.sender_name} (@{record.sender_username})"
+                        elif record.sender_username:
+                            user_tag = f"@{record.sender_username}"
+                        else:
+                            user_tag = record.sender_name
+                    elif chat_name or chat_username:
+                        if chat_name and chat_username:
+                            user_tag = f"{chat_name} (@{chat_username})"
+                        elif chat_username:
+                            user_tag = f"@{chat_username}"
+                        else:
+                            user_tag = chat_name
+                    elif chat_id:
+                        user_tag = f"Foydalanuvchi (Chat ID: {chat_id})"
 
                     deleted_records.append({
                         "message_id": record.telegram_message_id,

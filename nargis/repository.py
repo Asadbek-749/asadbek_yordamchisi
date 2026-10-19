@@ -5,6 +5,7 @@ import logging
 from typing import Optional, Sequence
 
 from sqlalchemy import desc, func, or_, select, update
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from discipline.models import (
@@ -211,6 +212,10 @@ class NargisRepository:
         ai_generated_reply: Optional[str] = None,
         owner_notified: bool = False,
     ) -> NargisMessage:
+        full_sender = contact.first_name or ""
+        if contact.last_name:
+            full_sender = f"{full_sender} {contact.last_name}".strip()
+
         msg = NargisMessage(
             contact_id=contact.id,
             content=content,
@@ -222,6 +227,9 @@ class NargisRepository:
             deadline_hint=deadline_hint,
             reason_summary=reason_summary,
             telegram_message_id=telegram_message_id,
+            chat_id=contact.telegram_id,
+            sender_name=full_sender or None,
+            sender_username=contact.username,
             business_connection_id=business_connection_id,
             ai_generated_reply=ai_generated_reply,
             owner_notified=owner_notified,
@@ -240,6 +248,7 @@ class NargisRepository:
     ) -> Sequence[NargisMessage]:
         stmt = (
             select(NargisMessage)
+            .options(selectinload(NargisMessage.contact))
             .where(NargisMessage.direction == "IN")
             .order_by(desc(NargisMessage.created_at))
         )
@@ -257,6 +266,7 @@ class NargisRepository:
         """Return HIGH and CRITICAL messages not yet resolved."""
         stmt = (
             select(NargisMessage)
+            .options(selectinload(NargisMessage.contact))
             .where(
                 NargisMessage.direction == "IN",
                 NargisMessage.urgency.in_(["HIGH", "CRITICAL"]),

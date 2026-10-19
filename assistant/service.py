@@ -283,8 +283,21 @@ class Assistant:
 
         # 7. Language detection and record incoming message
         lang = detect_language(desc) or self.history.last_language(conn, chat_id)
-        sender_name = getattr(from_user, "full_name", None) or "User"
+        sender_name = getattr(from_user, "full_name", None)
+        if not sender_name and from_user:
+            first = getattr(from_user, "first_name", "") or ""
+            last = getattr(from_user, "last_name", "") or ""
+            sender_name = f"{first} {last}".strip()
+        if not sender_name and message.chat:
+            first = getattr(message.chat, "first_name", "") or ""
+            last = getattr(message.chat, "last_name", "") or ""
+            sender_name = f"{first} {last}".strip() or getattr(message.chat, "title", None)
+        sender_name = sender_name or "Foydalanuvchi"
+
         sender_username = getattr(from_user, "username", None)
+        if not sender_username and message.chat:
+            sender_username = getattr(message.chat, "username", None)
+
         self.history.add(
             conn, chat_id, role="other", name=sender_name, text=desc, lang=lang, ts=self.clock()
         )
@@ -510,6 +523,15 @@ class Assistant:
         if not message_ids or not chat_id:
             return
 
+        chat_name = None
+        chat_username = getattr(chat, "username", None)
+        if chat:
+            first = getattr(chat, "first_name", "") or ""
+            last = getattr(chat, "last_name", "") or ""
+            title = getattr(chat, "title", "") or ""
+            full = f"{first} {last}".strip()
+            chat_name = full or title or None
+
         try:
             from discipline.db import is_db_initialized
             if is_db_initialized() and self.settings.owner_id:
@@ -519,6 +541,8 @@ class Assistant:
                     chat_id=chat_id,
                     message_ids=message_ids,
                     business_connection_id=conn_id,
+                    chat_name=chat_name,
+                    chat_username=chat_username,
                 )
                 for alert_item in deleted_alerts:
                     await bot.send_message(
@@ -574,7 +598,12 @@ class Assistant:
             return
 
         is_owner = (from_id == self.settings.owner_id)
-        sender_name = getattr(from_user, "full_name", None) or getattr(from_user, "first_name", None) or "User"
+        sender_name = getattr(from_user, "full_name", None)
+        if not sender_name and from_user:
+            first = getattr(from_user, "first_name", "") or ""
+            last = getattr(from_user, "last_name", "") or ""
+            sender_name = f"{first} {last}".strip()
+        sender_name = sender_name or "Foydalanuvchi"
         sender_username = getattr(from_user, "username", None)
         conn = f"direct_{chat_id}"
 
@@ -664,6 +693,24 @@ class Assistant:
             except Exception as _err:
                 logger.warning("Nargis direct classification error: %s", _err)
 
+        # 1b. Store message in CommunicationManager
+        try:
+            from discipline.db import is_db_initialized
+            if is_db_initialized() and self.settings.owner_id:
+                from nargis.communication import CommunicationManager
+                comm = CommunicationManager(self.settings.owner_id)
+                await comm.handle_external_message(
+                    sender_id=from_id,
+                    sender_name=sender_name,
+                    sender_username=sender_username,
+                    message_text=raw_text,
+                    chat_id=chat_id,
+                    telegram_message_id=getattr(message, "message_id", None),
+                    business_connection_id=None,
+                )
+        except Exception as _cm_err:
+            logger.warning("CommunicationManager direct intake error: %s", _cm_err)
+
         # 2. Notify owner if high or critical
         if self._nargis_agent is not None and classification is not None and self.settings.owner_id:
             try:
@@ -702,6 +749,25 @@ class Assistant:
             await message.answer(reply)
         except Exception as e:
             logger.error("Failed to send direct reply to %d: %s", chat_id, e)
+
+        # 5b. Log message to NargisMessage table
+        if self._contact_service is not None and classification is not None:
+            try:
+                from discipline.db import is_db_initialized
+                if is_db_initialized():
+                    await self._contact_service.log_incoming_message(
+                        telegram_id=from_id,
+                        sender_name=sender_name,
+                        username=sender_username,
+                        content=raw_text,
+                        classification=classification,
+                        telegram_message_id=getattr(message, "message_id", None),
+                        business_connection_id=None,
+                        ai_reply=reply,
+                        owner_notified=False,
+                    )
+            except Exception as _log_err:
+                logger.warning("Nargis direct log error: %s", _log_err)
 
     def start_text(self) -> str:
         """Return detailed welcoming and setup guide in Uzbek for the owner."""
