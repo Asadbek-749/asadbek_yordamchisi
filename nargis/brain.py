@@ -134,39 +134,28 @@ class NargisBrain:
                 requires_owner=True,
             )
 
-        # 2. Income statements
-        if any(kw in lower for kw in ("daromad oldim", "maosh oldim", "pul tushdi", "daromad:", "oylik tushdi", "oylik oldim", "tushum bo'ldi", "daromad")):
+        # 2. Financial transactions extraction (Income and Expense)
+        from finance.extractor import FinanceExtractor
+        fin_extractor = FinanceExtractor()
+        fin_res = fin_extractor.rule_based_extract(cleaned)
+        if fin_res.transactions:
+            has_income = any(t.type == "INCOME" for t in fin_res.transactions)
+            intent = BrainIntent.FINANCE_ADD_INCOME if has_income else BrainIntent.FINANCE_ADD_EXPENSE
             return BrainActionRequest(
-                intent=BrainIntent.FINANCE_ADD_INCOME,
+                intent=intent,
                 confidence=ConfidenceLevel.HIGH,
                 module="finance",
-                entities={"raw_text": cleaned, "type": "INCOME"},
+                entities={"raw_text": cleaned, "type": "INCOME" if has_income else "EXPENSE"},
                 requires_confirmation=True,
                 requires_owner=True,
             )
-
-        # 3. Expense statements (Rule based detection)
-        if any(kw in lower for kw in ("sarfladim", "ishlatdim", "to'ladim", "berdim", "sotib oldim", "ketdi")):
-            # Check if amount is specified via numbers, currency names, or '50k' pattern
-            has_digits = bool(re.search(r"\d+", lower))
-            has_currency_words = any(w in lower for w in ("ming", "million", "mln", "so'm", "som"))
-            has_k_amount = bool(re.search(r"\b\d+\s*k\b", lower))
-
-            if not (has_digits or has_currency_words or has_k_amount) or "ancha" in lower or "kop" in lower or "ko'p" in lower:
-                return BrainActionRequest(
-                    intent=BrainIntent.AMBIGUOUS,
-                    confidence=ConfidenceLevel.LOW,
-                    module="finance",
-                    entities={"raw_text": cleaned},
-                    clarification_question="Qancha summa sarflaganingizni aniq yozing yoki ayting (masalan: 45 ming so'm).",
-                )
+        elif fin_res.is_ambiguous:
             return BrainActionRequest(
-                intent=BrainIntent.FINANCE_ADD_EXPENSE,
-                confidence=ConfidenceLevel.HIGH,
+                intent=BrainIntent.AMBIGUOUS,
+                confidence=ConfidenceLevel.LOW,
                 module="finance",
-                entities={"raw_text": cleaned, "type": "EXPENSE"},
-                requires_confirmation=True,
-                requires_owner=True,
+                entities={"raw_text": cleaned},
+                clarification_question=fin_res.clarification_question or "Qancha summa sarflaganingizni aniq yozing yoki ayting (masalan: 45 ming so'm).",
             )
 
         # 4. Discipline status inquiry (check before plan creation to capture queries like "rejalarim bo'yicha qanday ketyapman?")

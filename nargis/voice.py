@@ -119,13 +119,18 @@ class VoiceIntelligenceEngine:
             total = fin_res.total_amount
 
             if count == 1:
+                tx_type_label = "Daromad" if first_tx.type == "INCOME" else "Xarajat"
                 cat_display = first_tx.category_name or "Boshqa"
                 amt_str = service.format_money(first_tx.amount)
+                desc_line = f"• Izoh: <i>{first_tx.description}</i>\n" if first_tx.description else ""
+                date_line = f"• Sana: <b>{first_tx.transaction_date.strftime('%d.%m.%Y')}</b>\n"
                 text = (
-                    f"💰 <b>Xarajat aniqlandi:</b>\n\n"
+                    f"💰 <b>{tx_type_label} aniqlandi:</b>\n\n"
                     f"• Summa: <b>{amt_str}</b>\n"
-                    f"• Kategoriya: {cat_display}\n\n"
-                    f"<i>Tasdiqlaysizmi?</i>"
+                    f"• Kategoriya: {cat_display}\n"
+                    f"{desc_line}"
+                    f"{date_line}\n"
+                    f"<i>Hisobga qo'shish uchun tasdiqlaysizmi?</i>"
                 )
                 return {
                     "success": True,
@@ -135,20 +140,22 @@ class VoiceIntelligenceEngine:
                     "transaction_id": first_tx.id,
                 }
             else:
+                from finance.keyboards import compound_pending_keyboard
                 items_str = "\n".join(
                     f"• {t.category_name or 'Xarajat'}: {service.format_money(t.amount)}" for t in created
                 )
+                type_noun = "xarajat" if all(t.type == "EXPENSE" for t in created) else ("daromad" if all(t.type == "INCOME" for t in created) else "tranzaksiya")
                 text = (
-                    f"💰 <b>{count} ta xarajat aniqlandi:</b>\n\n"
+                    f"💰 <b>{count} ta {type_noun} aniqlandi:</b>\n\n"
                     f"{items_str}\n\n"
                     f"<b>Jami:</b> {service.format_money(total)}\n\n"
-                    f"<i>Har birini /pendingfinance orqali tasdiqlashingiz mumkin.</i>"
+                    f"<i>Hisobga qo'shish uchun tasdiqlaysizmi?</i>"
                 )
                 return {
                     "success": True,
                     "intent": action_req.intent.value,
                     "response_text": text,
-                    "reply_markup": pending_transaction_keyboard(first_tx.id),
+                    "reply_markup": compound_pending_keyboard(),
                 }
 
         # 3. Finance: Query

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 # Category keywords mapping (Uzbek, Russian, English)
 EXPENSE_KEYWORDS: dict[str, list[str]] = {
-    "FOOD": ["ovqat", "tushlik", "kechki ovqat", "nonushta", "restoran", "kafe", "osh", "somsa", "shashlik", "choyxona", "fastfood", "doner", "burger", "lavash", "food", "yegulik", "obed", "uzhin", "zavtrak"],
+    "FOOD": ["ovqat", "tushlik", "kechki ovqat", "nonushta", "restoran", "kafe", "kofe", "coffee", "choy", "ichimlik", "non", "osh", "somsa", "shashlik", "choyxona", "fastfood", "doner", "burger", "lavash", "food", "yegulik", "obed", "uzhin", "zavtrak"],
     "TRANSPORT": ["taksi", "taxi", "yandex", "transport", "yo'l", "yol", "yo'lkira", "benzin", "yoqilg'i", "meto", "metro", "avtobus", "marshrutka", "proyezd"],
     "HOME": ["ijara", "kvartira", "arenda", "uy", "remont", "mebel"],
     "UTILITIES": ["kommunal", "gaz", "svet", "elektr", "suv", "musor", "chiqindi"],
@@ -125,7 +125,7 @@ class FinanceExtractor:
             return FinanceExtractionResult(
                 transactions=[],
                 is_ambiguous=True,
-                clarification_question=f"{cat_label.capitalize()} uchun qancha summa sarfladingiz?",
+                clarification_question=f"{cat_label.capitalize()} uchun qancha summa sarflaganingizni aniq yozing yoki ayting (masalan: 45 ming so'm).",
                 raw_text=clean,
             )
 
@@ -133,7 +133,21 @@ class FinanceExtractor:
         parts = re.split(r"[,;]|\bva\b|\bhamda\b|\byana\b", clean, flags=re.IGNORECASE)
         transactions: List[ExtractedTransactionItem] = []
 
-        is_income_overall = any(w in lower for w in ["daromad", "ishladim", "oylik", "tushdi", "oldim", "topdim", "keldi"])
+        # Explicit income triggers
+        income_triggers = [
+            "daromad", "oylik", "maosh", "avans", "zarplata", "tushum",
+            "pul tushdi", "tushdi", "topdim", "keldi", "ishladim",
+            "pul oldim", "oylik oldim", "maosh oldim", "avans oldim",
+        ]
+        is_income_overall = any(w in lower for w in income_triggers)
+
+        # Detect transaction date (today vs yesterday)
+        import datetime
+        tx_date = date.today()
+        if "kecha" in lower or "kechagi" in lower:
+            tx_date = date.today() - datetime.timedelta(days=1)
+        elif "oldingi kun" in lower or "avvalgi kun" in lower:
+            tx_date = date.today() - datetime.timedelta(days=2)
 
         for part in parts:
             part = part.strip()
@@ -145,16 +159,15 @@ class FinanceExtractor:
                 continue
 
             part_lower = part.lower()
-            # Decide type:
-            part_is_income = is_income_overall or any(w in part_lower for w in ["daromad", "oldim", "ishladim", "tushdi"])
+            part_is_income = is_income_overall or any(w in part_lower for w in income_triggers)
             tx_type = "INCOME" if part_is_income else "EXPENSE"
 
             category = self._match_category(part_lower, tx_type)
 
-            # Generate nice clean description
-            # Strip amount words from part
+            # Clean description
             desc = re.sub(r"\d+(?:\.\d+)?\s*(?:ming|mln|million|k|so['`]?m)?", "", part, flags=re.IGNORECASE).strip()
-            desc = desc.strip(" ,.-")
+            desc = re.sub(r"\b(kecha|bugun|ga|da)\b", "", desc, flags=re.IGNORECASE).strip()
+            desc = re.sub(r"\s+", " ", desc).strip(" ,.-")
             if not desc:
                 desc = category.capitalize()
 
@@ -164,7 +177,7 @@ class FinanceExtractor:
                     amount=amount,
                     category=category,
                     description=desc.capitalize(),
-                    transaction_date=date.today(),
+                    transaction_date=tx_date,
                 )
             )
 

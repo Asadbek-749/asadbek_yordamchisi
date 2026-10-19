@@ -211,3 +211,47 @@ async def test_finance_query_yesterday(voice_env: FinanceService):
     assert "Xarajat:" in res["response_text"]
 
 
+@pytest.mark.asyncio
+async def test_voice_owner_spoken_expenses_with_confirm_keyboards(voice_env: FinanceService):
+    owner_id = 5146977644
+    engine = VoiceIntelligenceEngine(ai_generator=DummyAI(), owner_id=owner_id)
+
+    # 1. "Kecha 168 000 so'mga obed qilgandim."
+    r1 = await engine.process_voice_action(
+        transcript="Kecha 168 000 so'mga obed qilgandim.",
+        user_id=owner_id,
+        bot=None,
+        source="voice",
+    )
+    assert r1["success"] is True
+    assert r1["intent"] == BrainIntent.FINANCE_ADD_EXPENSE.value
+    assert "168 000 so'm" in r1["response_text"]
+    assert r1.get("reply_markup") is not None
+    assert "fin:confirm" in str(r1["reply_markup"])
+
+    # 2. "8000 so'mga kofe oldim."
+    r2 = await engine.process_voice_action(
+        transcript="8000 so'mga kofe oldim.",
+        user_id=owner_id,
+        bot=None,
+        source="voice",
+    )
+    assert r2["success"] is True
+    assert r2["intent"] == BrainIntent.FINANCE_ADD_EXPENSE.value
+    assert "8 000 so'm" in r2["response_text"]
+    assert r2.get("reply_markup") is not None
+
+    # 3. "Bugun abetga 26 000 so'mga somsa olib yedim."
+    r3 = await engine.process_voice_action(
+        transcript="Bugun abetga 26 000 so'mga somsa olib yedim.",
+        user_id=owner_id,
+        bot=None,
+        source="voice",
+    )
+    assert r3["success"] is True
+    assert r3["intent"] == BrainIntent.FINANCE_ADD_EXPENSE.value
+    assert "26 000 so'm" in r3["response_text"]
+    assert r3.get("reply_markup") is not None
+
+
+
