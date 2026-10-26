@@ -99,32 +99,36 @@ class AIBossEngine:
         if state.morning_completed:
             return None
 
-        # Level 1: 07:00 initial
-        if local_time_str == "07:00" and state.morning_level < 1:
-            await self._update_morning_level(today, 1)
+        # Morning control only applies during morning hours (< 12:00)
+        if local_time_str < "07:00" or local_time_str >= "12:00":
+            return None
+
+        # Level 5: 08:30+ escalation
+        if local_time_str >= "08:30" and state.morning_level < 5:
+            await self._update_morning_level(today, 5)
             return {
-                "level": 1,
+                "level": 5,
                 "message": (
-                    "🌅 <b>Xayrli tong, Asadbek ustoz!</b>\n\n"
-                    "Bugungi kuningiz unumli o'tishi uchun <b>3 ta eng muhim asosiy vazifangizni</b> yozing yoki ovozli xabar qilib yuboring 🎯\n\n"
-                    "<i>Masalan: 1. Python darsi, 2. AI loyiha, 3. Sport mashg'uloti</i>"
+                    "🚨 <b>NARGIS AI BOSS — KUNLIK REJA BO'YICHA ESKALATSIYA!</b>\n\n"
+                    "Bugun ertalabki rejalashtirish to'liq o'tkazib yuborildi.\n"
+                    "Bu intizom qoidalarining jiddiy buzilishi sifatida hisobotga kiritiladi."
                 ),
             }
 
-        # Level 2: 07:15 reminder
-        if local_time_str == "07:15" and state.morning_level < 2:
-            await self._update_morning_level(today, 2)
+        # Level 4: 08:00+ reason required
+        if local_time_str >= "08:00" and state.morning_level < 4:
+            await self._update_morning_level(today, 4)
             return {
-                "level": 2,
+                "level": 4,
                 "message": (
-                    "⏳ <b>Rejangiz hali kiritilmadi!</b>\n\n"
-                    "Bugungi kunni rejasiz boshlamang. Har qanday muvaffaqiyat aniq rejalashtirishdan boshlanadi.\n"
-                    "Hozir 3 ta asosiy vazifangizni yuboring!"
+                    "🛑 <b>Reja hali ham kiritilmagan!</b>\n\n"
+                    "Soat 08:00 bo'ldi. Rejasiz ishlash samaradorlikni 50% ga pasaytiradi.\n"
+                    "Iltimos, kechikish sababini yozing va bugungi rejangizni kiritib o'ting."
                 ),
             }
 
-        # Level 3: 07:30 strict warning + delay penalty
-        if local_time_str == "07:30" and state.morning_level < 3:
+        # Level 3: 07:30+ strict warning + delay penalty
+        if local_time_str >= "07:30" and state.morning_level < 3:
             await self._update_morning_level(today, 3)
             # Deduct 5 discipline points
             score_svc = NargisDisciplineScoreService()
@@ -143,27 +147,27 @@ class AIBossEngine:
                 ),
             }
 
-        # Level 4: 08:00 reason required
-        if local_time_str == "08:00" and state.morning_level < 4:
-            await self._update_morning_level(today, 4)
+        # Level 2: 07:15+ reminder
+        if local_time_str >= "07:15" and state.morning_level < 2:
+            await self._update_morning_level(today, 2)
             return {
-                "level": 4,
+                "level": 2,
                 "message": (
-                    "🛑 <b>Reja hali ham kiritilmagan!</b>\n\n"
-                    "Soat 08:00 bo'ldi. Rejasiz ishlash samaradorlikni 50% ga pasaytiradi.\n"
-                    "Iltimos, kechikish sababini yozing va bugungi rejangizni kiritib o'ting."
+                    "⏳ <b>Rejangiz hali kiritilmadi!</b>\n\n"
+                    "Bugungi kunni rejasiz boshlamang. Har qanday muvaffaqiyat aniq rejalashtirishdan boshlanadi.\n"
+                    "Hozir 3 ta asosiy vazifangizni yuboring!"
                 ),
             }
 
-        # Level 5: 08:30 escalation
-        if local_time_str == "08:30" and state.morning_level < 5:
-            await self._update_morning_level(today, 5)
+        # Level 1: 07:00+ initial plan prompt
+        if local_time_str >= "07:00" and state.morning_level < 1:
+            await self._update_morning_level(today, 1)
             return {
-                "level": 5,
+                "level": 1,
                 "message": (
-                    "🚨 <b>NARGIS AI BOSS — KUNLIK REJA BO'YICHA ESKALATSIYA!</b>\n\n"
-                    "Bugun ertalabki rejalashtirish to'liq o'tkazib yuborildi.\n"
-                    "Bu intizom qoidalarining jiddiy buzilishi sifatida hisobotga kiritiladi."
+                    "🌅 <b>Xayrli tong, Asadbek ustoz!</b>\n\n"
+                    "Bugungi kuningiz unumli o'tishi uchun <b>3 ta eng muhim asosiy vazifangizni</b> yozing yoki ovozli xabar qilib yuboring 🎯\n\n"
+                    "<i>Masalan: 1. Python darsi, 2. AI loyiha, 3. Sport mashg'uloti</i>"
                 ),
             }
 
@@ -285,3 +289,36 @@ class AIBossEngine:
                     f"Intizom bali: <b>-10 ball</b> chegirildi."
                 ),
             }
+
+    async def get_boss_status_summary(self, today: datetime.date) -> str:
+        """Compile comprehensive real-time accountability summary for owner."""
+        state = await self.get_or_create_boss_state(today)
+        score_svc = NargisDisciplineScoreService()
+        score, level = await score_svc.get_score(self.owner_id)
+
+        midday = await self.get_midday_progress_report(today)
+
+        async with get_session() as session:
+            repo = DisciplineRepository(session)
+            plan = await repo.get_daily_plan(self.owner_id, today)
+
+        plan_status = "✅ Kiritilgan" if (plan and (plan.top_three_tasks or plan.is_confirmed)) else f"⚠️ Kiritilmagan (Nazorat bosqichi: {state.morning_level}/5)"
+
+        text = (
+            f"🎯 <b>NARGIS AI BOSS — INTIZOM VA NAZORAT PANELI</b>\n\n"
+            f"🏆 <b>Intizom bali:</b> {score} ball (Daraja: <b>{level}</b>)\n"
+            f"📋 <b>Kunlik reja:</b> {plan_status}\n\n"
+            f"📊 <b>Bugungi vazifalar sur'ati:</b>\n"
+            f"• Jami: <b>{midday['total']} ta</b>\n"
+            f"• Bajarildi: <b>{midday['completed']} ta</b> ({midday['percent']}%)\n"
+            f"• Jarayonda: <b>{midday['in_progress']} ta</b>\n"
+            f"• Kechikkan / Muddati o'tgan: <b>{midday['overdue']} ta</b>\n\n"
+        )
+        if state.morning_level >= 3 and not (plan and plan.is_confirmed):
+            text += "⚠️ <i>Eslatma: Reja kechikkani sababli bugun jarima qo'llanilgan.</i>\n\n"
+        if midday['overdue'] > 0:
+            text += "🚨 <i>Kechikayotgan vazifalarni zudlik bilan yakunlang yoki /postpone orqali sabab ko'rsating!</i>"
+        else:
+            text += "🔥 <i>Sur'at a'lo darajada! Rejalashtirilgan natijalarga erishishda davom eting!</i>"
+
+        return text

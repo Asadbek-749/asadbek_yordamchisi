@@ -72,20 +72,26 @@ class FinanceExtractionResult:
 
 
 def parse_uzbek_amount(text: str) -> Optional[Decimal]:
-    """Parse Uzbek numeric text like '45 ming', '2 million', '50k', '150 000' into Decimal."""
+    """Parse Uzbek numeric text like '45 ming', '85 mingga', '2 million', '50k', '150 000' into Decimal."""
     clean = text.lower().replace(",", ".").strip()
 
-    # Pattern: 2.5 million / 2 million / 2 mln (word boundary required)
-    m_mil = re.search(r"(\d+(?:\.\d+)?)\s*(?:mln|million)\b", clean)
+    # Pattern: 2.5 million / 2 million / 2 mln / 2 millionga / 2 mlnlik
+    m_mil = re.search(r"(\d+(?:\.\d+)?)\s*(?:mln|million)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_mil:
         return Decimal(m_mil.group(1)) * Decimal("1000000")
 
-    # Pattern: 45 ming / 45k / 45 тыс (word boundary required)
-    m_ming = re.search(r"(\d+(?:\.\d+)?)\s*(?:ming|k|тыс)\b", clean)
+    # Pattern: 45 ming / 45k / 45 тыс / 45 mingga / 45 minglik / 45k ga
+    m_ming = re.search(r"(\d+(?:\.\d+)?)\s*(?:ming|k|тыс)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_ming:
         return Decimal(m_ming.group(1)) * Decimal("1000")
 
-    # Pattern: 150 000 / 150000 / 150.000
+    # Pattern: 150 000 / 150000 / 150.000 / 8000 so'm / 8000 so'mga
+    m_som = re.search(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{3,})\s*(?:so['`]?m|sum|usd|\$|dollar)(?:ga|da|dan|cha|lik|ni)?\b", clean)
+    if m_som:
+        raw_num = m_som.group(1).replace(" ", "").replace(".", "")
+        return Decimal(raw_num)
+
+    # Pattern: raw formatted digits: 150 000 / 150000 / 150.000
     m_digits = re.search(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{4,})", clean)
     if m_digits:
         raw_num = m_digits.group(1).replace(" ", "").replace(".", "")
@@ -101,13 +107,47 @@ class FinanceExtractor:
         self.ai = ai_generator
 
     def _match_category(self, text: str, tx_type: str) -> str:
-        """Find best matching category from keywords."""
+        """Find best matching category from keywords with smart Uzbek stemming and domain priority."""
         lower = text.lower()
         mapping = INCOME_KEYWORDS if tx_type == "INCOME" else EXPENSE_KEYWORDS
-        for cat, keywords in mapping.items():
+
+        category_order = (
+            ["MAIN_JOB", "TEACHING", "AI_SERVICES", "FREELANCE", "BUSINESS", "BONUS", "OTHER"]
+            if tx_type == "INCOME"
+            else [
+                "TRANSPORT",
+                "FOOD",
+                "EDUCATION",
+                "HEALTH",
+                "UTILITIES",
+                "INTERNET",
+                "CLOTHING",
+                "TECHNOLOGY",
+                "HOME",
+                "SHOPPING",
+                "ENTERTAINMENT",
+                "FAMILY",
+                "WORK",
+                "DEBT",
+                "SAVINGS",
+                "OTHER",
+            ]
+        )
+
+        for cat in category_order:
+            keywords = mapping.get(cat, [])
             for kw in keywords:
-                if re.search(r"\b" + re.escape(kw) + r"\b", lower) or kw in lower:
-                    return cat
+                kw_clean = kw.strip().lower()
+                if not kw_clean:
+                    continue
+                if len(kw_clean) <= 4:
+                    pattern = rf"\b{re.escape(kw_clean)}(?:ga|da|dan|ni|ning|lar|m|miz|i|si|ka|ta)?\b"
+                    if re.search(pattern, lower):
+                        return cat
+                else:
+                    pattern = rf"\b{re.escape(kw_clean)}[a-z'`]*\b"
+                    if re.search(pattern, lower):
+                        return cat
         return "OTHER"
 
     def rule_based_extract(self, text: str) -> FinanceExtractionResult:
@@ -165,8 +205,8 @@ class FinanceExtractor:
             category = self._match_category(part_lower, tx_type)
 
             # Clean description
-            desc = re.sub(r"\d+(?:\.\d+)?\s*(?:ming|mln|million|k|so['`]?m)?", "", part, flags=re.IGNORECASE).strip()
-            desc = re.sub(r"\b(kecha|bugun|ga|da)\b", "", desc, flags=re.IGNORECASE).strip()
+            desc = re.sub(r"\d+(?:\.\d+)?\s*(?:ming|mln|million|k|so['`]?m)?(?:ga|da|dan|cha|lik|ni)?", "", part, flags=re.IGNORECASE).strip()
+            desc = re.sub(r"\b(kecha|bugun|ga|da|so['`]?m)\b", "", desc, flags=re.IGNORECASE).strip()
             desc = re.sub(r"\s+", " ", desc).strip(" ,.-")
             if not desc:
                 desc = category.capitalize()

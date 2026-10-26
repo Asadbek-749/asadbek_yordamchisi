@@ -133,22 +133,8 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         from finance.intelligence import FinanceIntelligenceEngine
         intel = FinanceIntelligenceEngine(owner_id)
         comp = await intel.compare_weekly_spending()
-        msg = intel.generate_variance_message(comp)
-        if msg:
-            await message.answer(msg, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
-        else:
-            pct = comp["pct_change"]
-            curr = service.format_money(comp["current_total"])
-            prev = service.format_money(comp["previous_total"])
-            await message.answer(
-                f"📊 <b>Haftalik taqqoslash:</b>\n\n"
-                f"• Bu hafta: <b>{curr}</b>\n"
-                f"• O'tgan hafta: <b>{prev}</b>\n"
-                f"• O'zgarish: <b>{pct}%</b>\n\n"
-                f"Xarajatlarda keskin o'sish kuzatilmadi ✅",
-                parse_mode="HTML",
-                reply_markup=back_to_finance_keyboard(),
-            )
+        msg = intel.generate_full_comparison_report(comp)
+        await message.answer(msg, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
 
     # ─────────────────────────────────────────────────────────────────────────
     # /finance_month — Oylik moliyaviy hisobot

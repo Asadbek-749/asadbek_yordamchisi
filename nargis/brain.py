@@ -111,10 +111,15 @@ class NargisBrain:
 
         import re
 
-        # 1. Finance Query checks (e.g. "Meni kechagi xarajatlarim qancha edi?", "bu hafta qancha pul sarfladim?")
+        # 1. Finance Query checks (e.g. "Meni kechagi xarajatlarim qancha edi?", "bu hafta qancha pul sarfladim?", "moliya holati qanday?")
         is_fin_query = (
-            any(q_word in lower for q_word in ("qancha", "nechi", "qanchaga", "ko'rsat", "hisobot"))
-            and any(f_word in lower for f_word in ("sarfladim", "xarajat", "xarajatlarim", "pul", "ketdi", "ishlatdim", "bo'ldi", "tushdi", "daromad", "moliya"))
+            (
+                any(q_word in lower for q_word in ("qancha", "nechi", "qanchaga", "ko'rsat", "hisobot", "qanday", "holat", "taqqos", "solishtir"))
+                and any(f_word in lower for f_word in ("sarfladim", "xarajat", "xarajatlarim", "pul", "ketdi", "ishlatdim", "bo'ldi", "tushdi", "daromad", "moliya", "balans"))
+            )
+            or "moliyaviy hisobot" in lower
+            or "haftalik taqqoslash" in lower
+            or "xarajatlarni taqqos" in lower
         )
         if is_fin_query:
             if "kecha" in lower or "kechagi" in lower:
@@ -159,7 +164,7 @@ class NargisBrain:
             )
 
         # 4. Discipline status inquiry (check before plan creation to capture queries like "rejalarim bo'yicha qanday ketyapman?")
-        if any(kw in lower for kw in ("qanday ketyapman", "reja qanday", "holat qanday", "natijalarim", "vazifalar qanday", "qanday boryapti")):
+        if any(kw in lower for kw in ("qanday ketyapman", "reja qanday", "holat qanday", "natijalarim", "vazifalar qanday", "qanday boryapti", "intizom holati", "intizom holatim", "intizom qanday", "intizom bali", "ballarim")):
             return BrainActionRequest(
                 intent=BrainIntent.DISCIPLINE_STATUS,
                 confidence=ConfidenceLevel.HIGH,
@@ -170,7 +175,7 @@ class NargisBrain:
             )
 
         # 5. Daily Plan setup
-        if "reja:" in lower or "rejalarim:" in lower or "rejalarim" in lower or "bugungi reja" in lower or "asosiy vazifa" in lower:
+        if any(kw in lower for kw in ("reja:", "rejam:", "rejalarim:", "rejalarim", "bugungi reja", "rejam", "asosiy vazifa")):
             return BrainActionRequest(
                 intent=BrainIntent.PLAN_CREATE,
                 confidence=ConfidenceLevel.HIGH,
@@ -180,17 +185,18 @@ class NargisBrain:
                 requires_owner=True,
             )
 
-        # 6. Task creation with time or deadline (e.g. "Ertaga soat 10 da prezentatsiyani tugatishim kerak")
-        if any(kw in lower for kw in ("kerak", "qilishim shart", "vazifa:", "tugatishim", "bajaraman")):
-            if any(time_kw in lower for time_kw in ("ertaga", "bugun", "soat", "gacha", "da", "dushanba", "seshanba", "chorshanba", "payshanba", "juma", "shanba")):
-                return BrainActionRequest(
-                    intent=BrainIntent.TASK_CREATE,
-                    confidence=ConfidenceLevel.HIGH,
-                    module="boss",
-                    entities={"raw_text": cleaned},
-                    requires_confirmation=True,
-                    requires_owner=True,
-                )
+        # 6. Task creation with time or deadline (e.g. "Ertaga soat 10 da prezentatsiyani tugatishim kerak", "Ertaga soat 9 da uchrashuv")
+        has_time_marker = any(time_kw in lower for time_kw in ("ertaga", "bugun", "soat", "gacha", "dushanba", "seshanba", "chorshanba", "payshanba", "juma", "shanba"))
+        has_task_marker = any(kw in lower for kw in ("kerak", "qilishim shart", "shart", "vazifa:", "vazifa", "tugatishim", "bajaraman", "uchrashuv", "dars", "yig'ilish", "prezentatsiya", "topshiriq", "bor"))
+        if has_time_marker and has_task_marker and not is_fin_query and "reja:" not in lower and "rejam:" not in lower:
+            return BrainActionRequest(
+                intent=BrainIntent.TASK_CREATE,
+                confidence=ConfidenceLevel.HIGH,
+                module="boss",
+                entities={"raw_text": cleaned},
+                requires_confirmation=True,
+                requires_owner=True,
+            )
 
         # 7. Goals creation / inquiry
         if "maqsad:" in lower or "yangi maqsad" in lower:

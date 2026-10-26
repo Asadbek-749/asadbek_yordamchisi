@@ -132,7 +132,7 @@ async def test_postponement_guard_enforces_reason_on_repeated_delays(boss_env):
 async def test_midday_progress_report(boss_env):
     owner_id = 5146977644
     boss = AIBossEngine(owner_id=owner_id)
-    today = datetime.date(2026, 10, 19)
+    today = datetime.datetime.now(datetime.timezone.utc).date()
 
     from discipline.db import get_session
     async with get_session() as session:
@@ -149,3 +149,24 @@ async def test_midday_progress_report(boss_env):
     assert rep["percent"] == 33
     assert "33%" in rep["text"]
     assert "1 ta muhim vazifa kechikmoqda" in rep["text"]
+
+
+@pytest.mark.asyncio
+async def test_boss_status_summary_and_multiday_states(boss_env):
+    owner_id = 5146977644
+    boss = AIBossEngine(owner_id=owner_id)
+    day1 = datetime.date(2026, 10, 20)
+    day2 = datetime.date(2026, 10, 21)
+
+    # 1. State creation across multiple days must not collide on primary key
+    s1 = await boss.get_or_create_boss_state(day1)
+    s2 = await boss.get_or_create_boss_state(day2)
+    assert s1.check_date == day1
+    assert s2.check_date == day2
+    assert s1.id != s2.id
+
+    # 2. Status summary should be formatted and clear
+    summary = await boss.get_boss_status_summary(day2)
+    assert "NARGIS AI BOSS" in summary
+    assert "Intizom bali" in summary
+    assert "Kunlik reja" in summary

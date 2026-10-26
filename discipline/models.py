@@ -444,8 +444,9 @@ class NargisBossState(Base):
     """Tracks state of daily accountability checks and escalation levels."""
     __tablename__ = "nargis_boss_states"
 
-    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    check_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    check_date: Mapped[datetime.date] = mapped_column(Date, index=True, nullable=False)
     morning_level: Mapped[int] = mapped_column(Integer, default=0)
     morning_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     midday_checked: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -453,5 +454,9 @@ class NargisBossState(Base):
     evening_rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tomorrow_planned: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "check_date", name="uq_user_boss_check_date"),
+    )
 
 

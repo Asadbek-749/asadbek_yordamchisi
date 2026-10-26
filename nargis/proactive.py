@@ -46,8 +46,8 @@ class ProactiveEngine:
             except Exception as e:
                 logger.warning("Failed to send morning step to owner: %s", e)
 
-        # 2. Midday Progress Audit (13:00)
-        if local_time_str == "13:00" and self.bot:
+        # 2. Midday Progress Audit (13:00 - 20:00)
+        if local_time_str >= "13:00" and local_time_str < "20:00" and self.bot:
             state = await self.boss.get_or_create_boss_state(today)
             if not state.midday_checked:
                 report = await self.boss.get_midday_progress_report(today)
@@ -73,8 +73,36 @@ class ProactiveEngine:
                 except Exception as e:
                     logger.warning("Failed to send midday report to owner: %s", e)
 
-        # 3. Tomorrow Planning (22:00)
-        if local_time_str == "22:00" and self.bot:
+        # 3. Evening Review & Accountability (21:00 - 22:00)
+        if local_time_str >= "21:00" and self.bot:
+            state = await self.boss.get_or_create_boss_state(today)
+            if not state.evening_checked:
+                summary_text = await self.boss.get_boss_status_summary(today)
+                evening_msg = (
+                    f"🌙 <b>KUN YAKUNI — INTIZOM TAHLILI (21:00)</b>\n\n"
+                    f"{summary_text}\n\n"
+                    f"<i>Bugungi intizomingizni qanday baholaysiz? (1 dan 5 gacha)</i>"
+                )
+                try:
+                    await self.bot.send_message(self.owner_id, evening_msg, parse_mode="HTML")
+                    from sqlalchemy import update
+                    from discipline.db import get_session
+                    from discipline.models import NargisBossState
+                    async with get_session() as session:
+                        await session.execute(
+                            update(NargisBossState)
+                            .where(
+                                NargisBossState.user_id == self.owner_id,
+                                NargisBossState.check_date == today,
+                            )
+                            .values(evening_checked=True)
+                        )
+                        await session.commit()
+                except Exception as e:
+                    logger.warning("Failed to send evening review to owner: %s", e)
+
+        # 4. Tomorrow Planning (22:00+)
+        if local_time_str >= "22:00" and self.bot:
             state = await self.boss.get_or_create_boss_state(today)
             if not state.tomorrow_planned:
                 tomorrow = today + datetime.timedelta(days=1)

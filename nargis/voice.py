@@ -181,6 +181,15 @@ class VoiceIntelligenceEngine:
                     ),
                 }
             elif period == "week":
+                if "taqqos" in clean_text.lower():
+                    from finance.intelligence import FinanceIntelligenceEngine
+                    intel = FinanceIntelligenceEngine(self.owner_id)
+                    comp = await intel.compare_weekly_spending()
+                    return {
+                        "success": True,
+                        "intent": action_req.intent.value,
+                        "response_text": intel.generate_full_comparison_report(comp),
+                    }
                 start_of_week = today - datetime.timedelta(days=today.weekday())
                 summary = await service.get_weekly_summary(self.owner_id, start_of_week, today)
                 total = summary.get("total_expense", Decimal("0.00"))
@@ -233,17 +242,32 @@ class VoiceIntelligenceEngine:
             deadline = now_utc + datetime.timedelta(hours=24) # Default tomorrow
 
             lower = clean_text.lower()
+            import re
+            tz = ZoneInfo("Asia/Tashkent")
+            local_now = datetime.datetime.now(tz)
+            m = re.search(r"soat\s*(\d{1,2})(?::(\d{2}))?|(\d{1,2}):(\d{2})", lower)
+            target_hour = 10
+            target_min = 0
+            if m:
+                if m.group(1):
+                    target_hour = int(m.group(1))
+                    target_min = int(m.group(2)) if m.group(2) else 0
+                elif m.group(3):
+                    target_hour = int(m.group(3))
+                    target_min = int(m.group(4)) if m.group(4) else 0
+
             if "ertaga" in lower:
-                # Detect hour e.g. "soat 10 da"
-                import re
-                m = re.search(r"soat\s*(\d{1,2})", lower)
-                target_hour = int(m.group(1)) if m else 10
-                tz = ZoneInfo("Asia/Tashkent")
-                local_now = datetime.datetime.now(tz)
-                tomorrow_local = (local_now + datetime.timedelta(days=1)).replace(
-                    hour=target_hour, minute=0, second=0, microsecond=0
+                target_local = (local_now + datetime.timedelta(days=1)).replace(
+                    hour=target_hour, minute=target_min, second=0, microsecond=0
                 )
-                deadline = tomorrow_local.astimezone(datetime.timezone.utc)
+                deadline = target_local.astimezone(datetime.timezone.utc)
+            elif "bugun" in lower or m:
+                target_local = local_now.replace(
+                    hour=target_hour, minute=target_min, second=0, microsecond=0
+                )
+                if target_local < local_now and "bugun" not in lower:
+                    target_local += datetime.timedelta(days=1)
+                deadline = target_local.astimezone(datetime.timezone.utc)
 
             priority = "high" if any(w in lower for w in ("muhim", "shart", "darhol", "prezentatsiya")) else "medium"
 

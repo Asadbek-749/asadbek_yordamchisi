@@ -335,6 +335,7 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="start", description="🚀 Bosh sahifa va menyuni ochish"),
                 BotCommand(command="finance", description="💰 Shaxsiy moliya boshqaruvi"),
                 BotCommand(command="discipline", description="🎯 Intizom boshqaruv paneli"),
+                BotCommand(command="boss", description="🚨 Nargis AI Boss nazorat paneli"),
                 BotCommand(command="today", description="📋 Bugungi reja va vazifalar"),
                 BotCommand(command="plan", description="📝 Kunlik rejani kiritish"),
                 BotCommand(command="postpone", description="⚠️ Vazifani ko'chirish (sabab bilan)"),

@@ -101,6 +101,14 @@ class FinanceIntelligenceEngine:
             )
             prev_cats = dict((await session.execute(stmt_prev_cats)).all())
 
+        # Sanitize category dicts (ensure no None keys)
+        curr_cats = {
+            (cat or "Boshqa"): amt for cat, amt in curr_cats.items()
+        }
+        prev_cats = {
+            (cat or "Boshqa"): amt for cat, amt in prev_cats.items()
+        }
+
         # Percentage change
         pct_change = Decimal("0.00")
         has_spike = False
@@ -110,6 +118,9 @@ class FinanceIntelligenceEngine:
             # A 25%+ increase constitutes an investigative spike
             if pct_change >= Decimal("25.0"):
                 has_spike = True
+        elif curr_total > Decimal("0.00"):
+            pct_change = Decimal("100.0")
+            has_spike = True
 
         # Find largest category jump
         biggest_spike_cat = None
@@ -127,6 +138,7 @@ class FinanceIntelligenceEngine:
             "pct_change": pct_change,
             "has_spike": has_spike,
             "current_categories": curr_cats,
+            "previous_categories": prev_cats,
             "biggest_spike_category": biggest_spike_cat,
             "biggest_spike_delta": biggest_spike_delta,
         }
@@ -152,3 +164,46 @@ class FinanceIntelligenceEngine:
 
         text += "\n\n<i>Xarajat oshishining asosiy sababi nima? Rejadan tashqari xarajat bo'ldimi?</i>"
         return text
+
+    def generate_full_comparison_report(self, analysis: Dict[str, Any]) -> str:
+        """Format a rich, detailed comparison report with category breakdowns."""
+        pct = analysis["pct_change"]
+        curr_total = analysis["current_total"]
+        prev_total = analysis["previous_total"]
+        curr = f"{curr_total:,.0f}".replace(",", " ") + " so'm"
+        prev = f"{prev_total:,.0f}".replace(",", " ") + " so'm"
+        curr_cats = analysis.get("current_categories", {})
+        spike_cat = analysis.get("biggest_spike_category")
+
+        if prev_total == Decimal("0.00") and curr_total == Decimal("0.00"):
+            return "📊 <b>Haftalik taqqoslash:</b>\n\nBu va o'tgan haftada hali xarajatlar qayd etilmagan."
+
+        if pct > Decimal("0.00"):
+            header_icon = "⚠️" if analysis["has_spike"] else "📈"
+            trend_str = f"<b>+{pct}%</b> ga ko'proq"
+        elif pct < Decimal("0.00"):
+            header_icon = "📉"
+            trend_str = f"<b>{abs(pct)}%</b> ga tejaldi"
+        else:
+            header_icon = "📊"
+            trend_str = "o'zgarishsiz (0.0%)"
+
+        lines = [
+            f"{header_icon} <b>HAFTALIK MOLIYAVIY TAQQOSLASH</b>\n",
+            f"• O'tgan hafta: <b>{prev}</b>",
+            f"• Bu hafta: <b>{curr}</b>",
+            f"• Dinamika: {trend_str}\n",
+        ]
+
+        if curr_cats:
+            lines.append("🏷 <b>Bu haftadagi asosiy xarajatlar:</b>")
+            for cat, amt in list(curr_cats.items())[:5]:
+                amt_str = f"{amt:,.0f}".replace(",", " ") + " so'm"
+                lines.append(f"  • {cat}: <b>{amt_str}</b>")
+
+        if spike_cat and analysis["has_spike"]:
+            lines.append(f"\n⚠️ <i>Diqqat: Eng katta o'sish <b>{spike_cat}</b> bo'yicha kuzatildi.</i>")
+        elif pct <= Decimal("0.00"):
+            lines.append("\n✅ <i>Ajoyib intizom! Xarajatlar nazorat ostida saqlanmoqda.</i>")
+
+        return "\n".join(lines)

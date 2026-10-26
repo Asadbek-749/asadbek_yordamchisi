@@ -254,4 +254,52 @@ async def test_voice_owner_spoken_expenses_with_confirm_keyboards(voice_env: Fin
     assert r3.get("reply_markup") is not None
 
 
+@pytest.mark.asyncio
+async def test_voice_spoken_suffixes_and_no_tashkent_collision(voice_env: FinanceService):
+    owner_id = 5146977644
+    engine = VoiceIntelligenceEngine(ai_generator=DummyAI(), owner_id=owner_id)
+
+    # 1. Uzbek suffix "-ga" on ming: "Dorixonadan 85 mingga dori oldim"
+    r_med = await engine.process_voice_action(
+        transcript="Dorixonadan 85 mingga dori oldim",
+        user_id=owner_id,
+        bot=None,
+    )
+    assert r_med["success"] is True
+    assert r_med["intent"] == BrainIntent.FINANCE_ADD_EXPENSE.value
+    assert "85 000" in r_med["response_text"]
+    assert "HEALTH" in r_med["response_text"].upper() or "DORI" in r_med["response_text"].upper()
+
+    # 2. Avoid "osh" collision in "Toshkentga": should be TRANSPORT, not FOOD
+    r_tax = await engine.process_voice_action(
+        transcript="Toshkentga taksiga 50 ming berdim",
+        user_id=owner_id,
+        bot=None,
+    )
+    assert r_tax["success"] is True
+    assert r_tax["intent"] == BrainIntent.FINANCE_ADD_EXPENSE.value
+    assert "50 000" in r_tax["response_text"]
+    assert "TRANSPORT" in r_tax["response_text"].upper()
+
+    # 3. Meeting task without "kerak": "Ertaga soat 9 da uchrashuv bor"
+    r_meet = await engine.process_voice_action(
+        transcript="Ertaga soat 9 da uchrashuv bor",
+        user_id=owner_id,
+        bot=None,
+    )
+    assert r_meet["success"] is True
+    assert r_meet["intent"] == BrainIntent.TASK_CREATE.value
+    assert "uchrashuv" in r_meet["response_text"].lower()
+
+    # 4. Weekly comparison query via voice
+    r_comp = await engine.process_voice_action(
+        transcript="Bu haftalik xarajatlarni taqqoslab ber",
+        user_id=owner_id,
+        bot=None,
+    )
+    assert r_comp["success"] is True
+    assert r_comp["intent"] == BrainIntent.FINANCE_QUERY.value
+    assert "HAFTALIK" in r_comp["response_text"].upper()
+
+
 

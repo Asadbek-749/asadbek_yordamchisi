@@ -540,6 +540,16 @@ def build_discipline_router(service: DisciplineService, owner_id: int) -> Router
         else:
             await message.answer("🧠 Nargis xotirasida hali faol kontekst yozuvlari mavjud emas.", parse_mode="HTML")
 
+    @router.message(is_owner, Command("boss"))
+    @router.message(is_owner, F.text == "🎯 Nargis Boss")
+    async def cmd_boss_status(message: Message) -> None:
+        """Display full Nargis AI Boss accountability dashboard."""
+        from nargis.boss import AIBossEngine
+        boss = AIBossEngine(owner_id)
+        today = datetime.datetime.now(ZoneInfo("Asia/Tashkent")).date()
+        summary = await boss.get_boss_status_summary(today)
+        await message.answer(summary, parse_mode="HTML")
+
     return router
 
 
