@@ -20,6 +20,7 @@ from finance.keyboards import (
     compound_pending_keyboard,
     dashboard_keyboard,
     edit_menu_keyboard,
+    finance_app_url,
     main_finance_keyboard,
     pending_transaction_keyboard,
 )
@@ -30,7 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 def build_finance_router(
-    service: FinanceService, owner_id: int, ai_generator: Optional[Any] = None, sheets_sync: Optional[Any] = None
+    service: FinanceService,
+    owner_id: int,
+    ai_generator: Optional[Any] = None,
+    sheets_sync: Optional[Any] = None,
+    webapp_url: Optional[str] = None,
 ) -> Router:
     """Build and return aiogram router for the Personal Finance module."""
     router = Router(name="finance_router")
@@ -53,6 +58,7 @@ def build_finance_router(
             "setrate",
             "export",
             "dashboard",
+            "panel",
             "sheet",
             "sheetsync",
             "addrecurring",
@@ -220,7 +226,25 @@ def build_finance_router(
             BufferedInputFile(png, filename="dashboard.png"),
             caption="\n".join(lines),
             parse_mode="HTML",
-            reply_markup=dashboard_keyboard(),
+            reply_markup=dashboard_keyboard(webapp_url),
+        )
+
+    @router.message(is_owner, Command("panel"))
+    async def cmd_panel(message: Message) -> None:
+        app_url = finance_app_url(webapp_url)
+        if not app_url:
+            await message.answer(
+                "ℹ️ Mini App uchun Railway'da <code>WEBAPP_URL</code> (https://...up.railway.app) o'rnatilgan bo'lishi kerak.",
+                parse_mode="HTML",
+            )
+            return
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+        await message.answer(
+            "📱 <b>Nargis Moliya paneli</b>\nJonli dashboard, grafiklar va yozuvlarni tasdiqlash/tahrirlash.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🚀 Panelni ochish", web_app=WebAppInfo(url=app_url))]]
+            ),
         )
 
     @router.message(is_owner, Command("dashboard"))

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1420">
+  <title>Nargis Moliya</title>
+  <link rel="stylesheet" href="fin.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <main id="app" aria-live="polite">
+    <header class="top">
+      <div>
+        <h1>Nargis Moliya</h1>
+        <p id="range" class="muted">&nbsp;</p>
+      </div>
+      <button id="refresh" class="icon-btn" aria-label="Yangilash">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg>
+      </button>
+    </header>
+
+    <nav class="seg" id="seg" role="tablist" aria-label="Davr">
+      <button data-kind="day" role="tab">Bugun</button>
+      <button data-kind="week" role="tab">Hafta</button>
+      <button data-kind="month" role="tab" class="active">Oy</button>
+    </nav>
+
+    <div class="monthnav" id="monthnav">
+      <button id="prevMonth" class="icon-btn small" aria-label="Oldingi oy">‹</button>
+      <span id="monthLabel">—</span>
+      <button id="nextMonth" class="icon-btn small" aria-label="Keyingi oy">›</button>
+    </div>
+
+    <section id="msg" class="notice hidden"></section>
+
+    <section id="content" class="hidden">
+      <div class="kpis">
+        <article class="kpi income"><span>Daromad</span><b id="kIncome">0</b></article>
+        <article class="kpi expense"><span>Xarajat</span><b id="kExpense">0</b></article>
+        <article class="kpi net"><span>Sof balans</span><b id="kNet">0</b></article>
+        <article class="kpi avg"><span>O'rtacha kunlik</span><b id="kAvg">0</b></article>
+      </div>
+      <p class="unit muted">so'mda · faqat tasdiqlangan yozuvlar</p>
+
+      <div id="budget" class="card hidden">
+        <div class="row"><span>Oylik byudjet</span><b id="budgetPct">0%</b></div>
+        <div class="bar"><i id="budgetFill"></i></div>
+        <p class="muted small" id="budgetNote"></p>
+      </div>
+
+      <div id="usd" class="card hidden"></div>
+
+      <article class="card">
+        <h2>Kunlik harakat</h2>
+        <div id="barsChart" class="chart"></div>
+        <p id="barsTip" class="muted small tip">Ustunni bosing</p>
+        <div class="legend"><span><i class="dot income"></i>Daromad</span><span><i class="dot expense"></i>Xarajat</span></div>
+      </article>
+
+      <article class="card">
+        <h2>Xarajat kategoriyalari</h2>
+        <div id="donutWrap" class="donut-wrap"></div>
+        <ul id="catList" class="cats"></ul>
+      </article>
+
+      <article class="card">
+        <h2>Yig'ma xarajat</h2>
+        <div id="lineChart" class="chart"></div>
+      </article>
+
+      <article class="card" id="insights"><h2>Muhim ko'rsatkichlar</h2><ul id="insightList" class="insights"></ul></article>
+
+      <article class="card">
+        <div class="row"><h2>Yozuvlar</h2><span id="pendingBadge" class="chip warn hidden"></span></div>
+        <div id="txList"></div>
+      </article>
+    </section>
+
+    <div id="skeleton" class="skeleton">
+      <div class="sk" style="height:84px"></div><div class="sk" style="height:84px"></div>
+      <div class="sk" style="height:200px"></div><div class="sk" style="height:200px"></div>
+    </div>
+  </main>
+
+  <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
+    <div class="sheet-bg" id="sheetBg"></div>
+    <div class="sheet-body">
+      <div class="grab"></div>
+      <h3 id="sheetTitle"></h3>
+      <p id="sheetMeta" class="muted"></p>
+      <div id="sheetEdit" class="edit hidden">
+        <input id="amountInput" inputmode="decimal" placeholder="Yangi summa (masalan 50 ming)" autocomplete="off">
+        <button id="saveAmount" class="btn primary">Saqlash</button>
+      </div>
+      <div id="sheetActions" class="actions"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="fin.js"></script>
+</body>
+</html>

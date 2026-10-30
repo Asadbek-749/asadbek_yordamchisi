@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 from aiohttp import web
 from aiogram import Bot
 
+from webapp.fin_api import register_finance_routes, verify_init_data
+
 logger = logging.getLogger("webapp.server")
 
 WEBAPP_DIR = Path(__file__).parent.resolve()
@@ -54,6 +56,7 @@ def create_webapp(
     bot: Optional[Bot] = None,
     owner_id: Optional[int] = None,
     data_dir: Optional[Path] = None,
+    bot_token: Optional[str] = None,
 ) -> web.Application:
     """Create configured aiohttp application."""
     app = web.Application()
@@ -130,8 +133,17 @@ def create_webapp(
         })
 
     async def handle_api_applications(request: web.Request) -> web.Response:
+        # Applicants' names and phone numbers: owner only (Telegram-signed initData required).
+        owner = request.app.get(OWNER_ID_KEY)
+        header = request.headers.get("Authorization", "")
+        user = verify_init_data(header[4:] if header.startswith("tma ") else "", bot_token or "")
+        if not owner or user is None or int(user["id"]) != int(owner):
+            return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
         apps = load_applications(request.app.get(DATA_DIR_KEY))
         return web.json_response({"ok": True, "applications": apps[:30]})
+
+    async def handle_fin_index(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(WEBAPP_DIR / "fin" / "index.html", headers={"Cache-Control": "no-cache"})
 
     # Register Routes
     app.router.add_get("/health", handle_health)
@@ -140,8 +152,23 @@ def create_webapp(
     app.router.add_get("/api/stats", handle_api_stats)
     app.router.add_get("/api/applications", handle_api_applications)
 
-    # Static assets (styles.css, app.js, assets/...)
-    app.router.add_static("/", WEBAPP_DIR, show_index=True)
+    # Owner-only finance Mini App ("Nargis Moliya")
+    if owner_id and bot_token:
+        register_finance_routes(app, owner_id, bot_token)
+    app.router.add_get("/fin/", handle_fin_index)
+    app.router.add_get("/fin", handle_fin_index)
+    app.router.add_static("/fin/", WEBAPP_DIR / "fin")
+
+    # Public static assets: only what the admissions page needs (never server.py, no directory listing)
+    async def handle_styles(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(WEBAPP_DIR / "styles.css")
+
+    async def handle_script(request: web.Request) -> web.FileResponse:
+        return web.FileResponse(WEBAPP_DIR / "app.js")
+
+    app.router.add_get("/styles.css", handle_styles)
+    app.router.add_get("/app.js", handle_script)
+    app.router.add_static("/assets/", WEBAPP_DIR / "assets")
 
     return app
 
@@ -154,7 +181,9 @@ async def start_webapp_server(
     host: str = "0.0.0.0",
 ) -> web.AppRunner:
     """Start background aiohttp server on given port."""
-    app = create_webapp(bot=bot, owner_id=owner_id, data_dir=data_dir)
+    app = create_webapp(
+        bot=bot, owner_id=owner_id, data_dir=data_dir, bot_token=bot.token if bot is not None else None
+    )
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host, port)

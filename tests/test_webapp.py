@@ -8,6 +8,7 @@ from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
 from aiohttp import web
 
 from webapp.server import create_webapp, load_applications, save_application
+from tests.test_fin_webapp import make_init_data
 from assistant.config import load_settings
 from nargis.webapp_router import build_webapp_router
 
@@ -70,7 +71,7 @@ async def test_webapp_endpoints(tmp_path):
     mock_bot = AsyncMock()
     mock_bot.send_message = AsyncMock()
 
-    app = create_webapp(bot=mock_bot, owner_id=5146977644, data_dir=data_dir)
+    app = create_webapp(bot=mock_bot, owner_id=5146977644, data_dir=data_dir, bot_token="123456:TEST")
     server = TestServer(app)
     client = TestClient(server)
     await client.start_server()
@@ -113,8 +114,13 @@ async def test_webapp_endpoints(tmp_path):
         assert stats["status"] == "active"
         assert stats["appCount"] == 1
 
-        # 4. /api/applications
+        # 4. /api/applications holds applicants' phone numbers: owner-only (signed Telegram initData)
         resp = await client.get("/api/applications")
+        assert resp.status == 401
+        not_owner = {"Authorization": "tma " + make_init_data("123456:TEST", 111)}
+        assert (await client.get("/api/applications", headers=not_owner)).status == 401
+        owner = {"Authorization": "tma " + make_init_data("123456:TEST", 5146977644)}
+        resp = await client.get("/api/applications", headers=owner)
         assert resp.status == 200
         apps_data = await resp.json()
         assert apps_data["ok"] is True

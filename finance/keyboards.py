@@ -1,7 +1,7 @@
 """Inline keyboards and UI for Personal Finance Manager."""
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 
 def pending_transaction_keyboard(transaction_id: int) -> InlineKeyboardMarkup:
@@ -101,10 +101,19 @@ def recurring_reminder_keyboard(recurring_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def dashboard_keyboard() -> InlineKeyboardMarkup:
-    """Period switcher under a dashboard image."""
+def finance_app_url(webapp_url: str | None) -> str | None:
+    """URL of the owner-only finance Mini App, derived from WEBAPP_URL."""
+    return webapp_url.rstrip("/") + "/fin/" if webapp_url else None
+
+
+def dashboard_keyboard(webapp_url: str | None = None) -> InlineKeyboardMarkup:
+    """Period switcher under a dashboard image (plus a button that opens the finance Mini App)."""
+    app_url = finance_app_url(webapp_url)
+    app_row = (
+        [[InlineKeyboardButton(text="📱 Moliya paneli (Mini App)", web_app=WebAppInfo(url=app_url))]] if app_url else []
+    )
     return InlineKeyboardMarkup(
-        inline_keyboard=[
+        inline_keyboard=app_row + [
             [
                 InlineKeyboardButton(text="📅 Bugun", callback_data="fin:dash:day"),
                 InlineKeyboardButton(text="📊 Hafta", callback_data="fin:dash:week"),

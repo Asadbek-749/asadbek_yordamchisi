@@ -234,3 +234,17 @@ Google Cloud'da kalit yaratish bloklangan bo'lsa (tashkilot siyosati), service a
 5. Deploydan keyin botga `/sheetsync` yuboring.
 
 Ikkala usul ham sozlangan bo'lsa, Apps Script ishlatiladi.
+
+---
+
+## Moliya Mini App ("Moliya" tugmasi)
+
+Egasining chatidagi menyu tugmasi endi **Nargis Moliya** Mini App'ni ochadi (`WEBAPP_URL` + `/fin/`):
+jonli dashboard (kun / hafta / oy, oylar bo'yicha o'tish), KPI kartalar, kunlik ustunlar, kategoriya diagrammasi,
+yig'ma xarajat (byudjet va taxmin bilan) va yozuvlar ro'yxati — yozuvni bosib **tasdiqlash / summani o'zgartirish / bekor qilish**.
+Boshqa foydalanuvchilarda "Qabul Mini App" tugmasi o'zgarishsiz qoladi. Buyruq: `/panel`.
+
+Xavfsizlik: `/api/fin/*` faqat Telegram imzolagan `initData` (bot tokeni bilan HMAC tekshiriladi, 24 soatdan eski bo'lmasin)
+va faqat `OWNER_ID` uchun ishlaydi. Shuningdek `/api/applications` (abituriyentlar telefoni) endi faqat egasiga ochiq,
+`server.py` kabi fayllar va papka ro'yxati tashqariga berilmaydi.
+Railway'da `WEBAPP_URL=https://<loyiha>.up.railway.app` o'rnatilgan va servis `PORT` da ishlayotgan bo'lishi kerak.

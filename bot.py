@@ -318,7 +318,11 @@ async def run_bot(settings: Settings) -> None:
                 sheets_sync.mark_dirty(today_local())  # refresh current month on startup
                 sheets_task = asyncio.create_task(sheets_sync.run_forever(alerter))
             finance_router = build_finance_router(
-                finance_service, settings.owner_id, assistant.generator, sheets_sync=sheets_sync
+                finance_service,
+                settings.owner_id,
+                assistant.generator,
+                sheets_sync=sheets_sync,
+                webapp_url=settings.webapp_url,
             )
             dp.include_router(finance_router)
             logger.info("💰 Nargis personal finance router registered.")
@@ -382,6 +386,7 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="score", description="🏆 Nargis intizom bali"),
                 BotCommand(command="budget", description="🎯 Oylik byudjet holati"),
                 BotCommand(command="export", description="📊 Oylik hisobot Excelda"),
+                BotCommand(command="panel", description="📱 Moliya paneli (Mini App)"),
                 BotCommand(command="recurring", description="🔁 Doimiy to'lovlar"),
                 BotCommand(command="setrate", description="💵 Dollar kursini belgilash"),
                 BotCommand(command="finance_compare", description="📈 Haftalik xarajatlar taqqoslash"),
@@ -406,6 +411,14 @@ async def run_bot(settings: Settings) -> None:
                 )
             )
             logger.info("📱 Telegram Chat Menu Button set to 'Qabul Mini App' (%s)", webapp_url)
+
+            # Owner's own chat: the menu button opens the private finance Mini App instead.
+            from finance.keyboards import finance_app_url
+            await bot.set_chat_menu_button(
+                chat_id=settings.owner_id,
+                menu_button=MenuButtonWebApp(text="Moliya", web_app=WebAppInfo(url=finance_app_url(webapp_url))),
+            )
+            logger.info("📱 Owner chat menu button set to 'Moliya' (%s)", finance_app_url(webapp_url))
     except Exception as e:
         logger.warning("Could not set bot commands: %s", e)
 
