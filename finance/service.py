@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from discipline.db import get_session
 from discipline.models import utcnow
 from finance.extractor import ExtractedTransactionItem
+from finance.timeutil import today_local
 from finance.models import (
     FinancialAccount,
     FinancialAuditLog,
@@ -27,6 +28,7 @@ from finance.models import (
     FinancialCategory,
     FinancialGoal,
     FinancialReport,
+    FinancialSetting,
     FinancialTransaction,
     FinancialTransactionItem,
 )
@@ -68,10 +70,40 @@ class FinanceService:
 
     @staticmethod
     def format_money(amount: Decimal, currency: str = "so'm") -> str:
-        """Format Decimal amount into readable string (e.g. 1 500 000 so'm)."""
+        """Format Decimal amount into readable string (e.g. 1 500 000 so'm, 100 USD)."""
+        suffix = "USD" if currency.upper() == "USD" else ("so'm" if currency.upper() == "UZS" else currency)
         val = int(amount) if amount % 1 == 0 else float(amount)
         formatted = f"{val:,}".replace(",", " ")
-        return f"{formatted} {currency}"
+        return f"{formatted} {suffix}"
+
+    @staticmethod
+    def _track_currency(by_currency: Dict[str, Dict[str, Decimal]], tx: FinancialTransaction) -> bool:
+        """Record tx in the per-currency totals. Returns True when it is a UZS transaction.
+
+        Main report totals are UZS only; other currencies are reported separately, never mixed in.
+        """
+        cur = (tx.currency or "UZS").upper()
+        bucket = by_currency.setdefault(cur, {"income": Decimal("0"), "expense": Decimal("0")})
+        if tx.type == "INCOME":
+            bucket["income"] += tx.amount
+        elif tx.type == "EXPENSE":
+            bucket["expense"] += tx.amount
+        return cur == "UZS"
+
+    async def get_usd_rate(self, owner_id: int) -> Optional[Decimal]:
+        """Manually configured USD -> UZS rate, or None."""
+        async with get_session() as session:
+            row = await session.get(FinancialSetting, (owner_id, "usd_rate"))
+            return Decimal(row.value) if row and row.value else None
+
+    async def set_usd_rate(self, owner_id: int, rate: Decimal) -> None:
+        async with get_session() as session:
+            row = await session.get(FinancialSetting, (owner_id, "usd_rate"))
+            if row:
+                row.value = str(rate)
+            else:
+                session.add(FinancialSetting(owner_id=owner_id, key="usd_rate", value=str(rate)))
+            await session.commit()
 
     async def ensure_default_categories(self) -> None:
         """Seed default categories if they don't already exist."""
@@ -328,7 +360,7 @@ class FinanceService:
         self, owner_id: int, target_date: Optional[datetime.date] = None
     ) -> Dict[str, Any]:
         """Calculate daily total income, expense, and net balance using Decimal."""
-        t_date = target_date or datetime.date.today()
+        t_date = target_date or today_local()
         async with get_session() as session:
             q = select(FinancialTransaction).where(
                 FinancialTransaction.owner_id == owner_id,
@@ -341,8 +373,11 @@ class FinanceService:
             total_income = Decimal("0.00")
             total_expense = Decimal("0.00")
             categories: Dict[str, Decimal] = {}
+            by_currency: Dict[str, Dict[str, Decimal]] = {}
 
             for tx in txs:
+                if not self._track_currency(by_currency, tx):
+                    continue
                 if tx.type == "INCOME":
                     total_income += tx.amount
                 elif tx.type == "EXPENSE":
@@ -365,6 +400,7 @@ class FinanceService:
                 "total_expense": total_expense,
                 "net_balance": net_balance,
                 "categories": categories,
+                "by_currency": by_currency,
                 "pending_count": pending_count,
                 "transaction_count": len(txs),
             }
@@ -386,9 +422,12 @@ class FinanceService:
             total_income = Decimal("0.00")
             total_expense = Decimal("0.00")
             categories: Dict[str, Decimal] = {}
+            by_currency: Dict[str, Dict[str, Decimal]] = {}
             top_expense_tx: Optional[FinancialTransaction] = None
 
             for tx in txs:
+                if not self._track_currency(by_currency, tx):
+                    continue
                 if tx.type == "INCOME":
                     total_income += tx.amount
                 elif tx.type == "EXPENSE":
@@ -413,6 +452,7 @@ class FinanceService:
                 "categories": sorted_cats,
                 "top_category": top_category,
                 "top_expense_tx": top_expense_tx,
+                "by_currency": by_currency,
                 "transaction_count": len(txs),
             }
 
@@ -441,8 +481,11 @@ class FinanceService:
             total_expense = Decimal("0.00")
             expense_categories: Dict[str, Decimal] = {}
             income_sources: Dict[str, Decimal] = {}
+            by_currency: Dict[str, Dict[str, Decimal]] = {}
 
             for tx in txs:
+                if not self._track_currency(by_currency, tx):
+                    continue
                 if tx.type == "INCOME":
                     total_income += tx.amount
                     src = tx.category_name or "Boshqa"
@@ -474,6 +517,7 @@ class FinanceService:
                 "expense_ratio": expense_ratio,
                 "expense_categories": sorted_expenses,
                 "income_sources": sorted_incomes,
+                "by_currency": by_currency,
                 "transaction_count": len(txs),
             }
 

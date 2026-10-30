@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 
 from discipline.db import get_session
+from finance.timeutil import today_local
 from finance.models import FinancialBudget, FinancialCategory, FinancialTransaction
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class FinanceIntelligenceEngine:
         Compare current week expenses with previous week expenses.
         Returns exact Decimal amounts, percentage delta, and category spikes.
         """
-        ref = reference_date or datetime.datetime.now(ZoneInfo("Asia/Tashkent")).date()
+        ref = reference_date or today_local()
 
         # Current week start (Monday) and end
         current_monday = ref - datetime.timedelta(days=ref.weekday())
@@ -49,7 +50,8 @@ class FinanceIntelligenceEngine:
             stmt_curr = select(func.coalesce(func.sum(FinancialTransaction.amount), Decimal("0.00"))).where(
                 FinancialTransaction.owner_id == self.owner_id,
                 FinancialTransaction.type == "EXPENSE",
-                FinancialTransaction.status == "CONFIRMED",
+                FinancialTransaction.status.in_(["CONFIRMED", "EDITED"]),
+                FinancialTransaction.currency == "UZS",
                 FinancialTransaction.transaction_date >= current_monday,
                 FinancialTransaction.transaction_date <= ref,
             )
@@ -60,7 +62,8 @@ class FinanceIntelligenceEngine:
             stmt_prev = select(func.coalesce(func.sum(FinancialTransaction.amount), Decimal("0.00"))).where(
                 FinancialTransaction.owner_id == self.owner_id,
                 FinancialTransaction.type == "EXPENSE",
-                FinancialTransaction.status == "CONFIRMED",
+                FinancialTransaction.status.in_(["CONFIRMED", "EDITED"]),
+                FinancialTransaction.currency == "UZS",
                 FinancialTransaction.transaction_date >= prev_monday,
                 FinancialTransaction.transaction_date <= prev_ref,
             )
@@ -75,7 +78,8 @@ class FinanceIntelligenceEngine:
                 .where(
                     FinancialTransaction.owner_id == self.owner_id,
                     FinancialTransaction.type == "EXPENSE",
-                    FinancialTransaction.status == "CONFIRMED",
+                    FinancialTransaction.status.in_(["CONFIRMED", "EDITED"]),
+                FinancialTransaction.currency == "UZS",
                     FinancialTransaction.transaction_date >= current_monday,
                     FinancialTransaction.transaction_date <= ref,
                 )
@@ -93,7 +97,8 @@ class FinanceIntelligenceEngine:
                 .where(
                     FinancialTransaction.owner_id == self.owner_id,
                     FinancialTransaction.type == "EXPENSE",
-                    FinancialTransaction.status == "CONFIRMED",
+                    FinancialTransaction.status.in_(["CONFIRMED", "EDITED"]),
+                FinancialTransaction.currency == "UZS",
                     FinancialTransaction.transaction_date >= prev_monday,
                     FinancialTransaction.transaction_date <= prev_ref,
                 )

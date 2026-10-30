@@ -194,3 +194,13 @@ class FinancialAuditLog(Base):
     old_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON or text description
     new_value: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON or text description
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class FinancialSetting(Base):
+    """Per-owner finance settings (e.g. the manually set USD -> UZS rate)."""
+    __tablename__ = "financial_settings"
+
+    owner_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

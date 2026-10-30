@@ -21,6 +21,7 @@ from finance.keyboards import (
     pending_transaction_keyboard,
 )
 from finance.service import FinanceService
+from finance.timeutil import month_label, today_local
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             "addexpense",
             "budget",
             "setbudget",
+            "setrate",
             "pendingfinance",
             "finance_today",
             "finance_week",
@@ -66,7 +68,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
     @router.message(is_owner, F.text == "💰 Moliya")
     async def cmd_finance(message: Message) -> None:
         summary = await service.get_daily_summary(owner_id)
-        now = datetime.date.today()
+        now = today_local()
         period_key = now.strftime("%Y-%m")
         budget_status = await service.get_budget_status(owner_id, period_key)
 
@@ -113,7 +115,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
     # ─────────────────────────────────────────────────────────────────────────
     @router.message(is_owner, Command("finance_week"))
     async def cmd_finance_week(message: Message) -> None:
-        today = datetime.date.today()
+        today = today_local()
         start = today - datetime.timedelta(days=today.weekday())  # Monday
         summary = await service.get_weekly_summary(owner_id, start, today)
         text = _format_weekly_summary_text(summary, service)
@@ -141,9 +143,10 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
     # ─────────────────────────────────────────────────────────────────────────
     @router.message(is_owner, Command("finance_month"))
     async def cmd_finance_month(message: Message) -> None:
-        today = datetime.date.today()
+        today = today_local()
         summary = await service.get_monthly_summary(owner_id, today.year, today.month)
         text = _format_monthly_summary_text(summary, service)
+        text += await _usd_equivalent_note(service, owner_id, summary)
         await message.answer(text, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -166,7 +169,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             await message.answer("❌ Noto'g'ri summa kiritildi. Iltimos, raqam bilan ko'rsating.")
             return
 
-        period_key = datetime.date.today().strftime("%Y-%m")
+        period_key = today_local().strftime("%Y-%m")
         budget = await service.set_monthly_budget(owner_id, period_key, amt)
         await message.answer(
             f"✅ <b>Oylik byudjet muvaffaqiyatli belgilandi!</b>\n\n"
@@ -176,9 +179,32 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             reply_markup=back_to_finance_keyboard(),
         )
 
+    @router.message(is_owner, Command("setrate"))
+    async def cmd_set_rate(message: Message) -> None:
+        args = message.text.split()[1:] if message.text else []
+        if not args:
+            rate = await service.get_usd_rate(owner_id)
+            current = f"Joriy kurs: <b>1 USD = {service.format_money(rate)}</b>\n\n" if rate else ""
+            await message.answer(
+                f"{current}Kursni belgilash: <code>/setrate 12650</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        from finance.extractor import parse_uzbek_amount
+        rate = parse_uzbek_amount(" ".join(args))
+        if rate is None or not (Decimal("1000") <= rate <= Decimal("100000")):
+            await message.answer("❌ Kurs noto'g'ri. 1 dollar necha so'm ekanini yozing, masalan: /setrate 12650")
+            return
+        await service.set_usd_rate(owner_id, rate)
+        await message.answer(
+            f"✅ Kurs saqlandi: <b>1 USD = {service.format_money(rate)}</b>",
+            parse_mode="HTML",
+        )
+
     @router.message(is_owner, Command("budget"))
     async def cmd_budget_status(message: Message) -> None:
-        period_key = datetime.date.today().strftime("%Y-%m")
+        period_key = today_local().strftime("%Y-%m")
         status = await service.get_budget_status(owner_id, period_key)
         if not status:
             await message.answer(
@@ -217,7 +243,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         lines = [f"⏳ <b>Kutilayotgan tranzaksiyalar ({len(pending)} ta):</b>\n"]
         for p in pending:
             t_icon = "💰" if p.type == "INCOME" else "💸"
-            amt_str = service.format_money(p.amount)
+            amt_str = service.format_money(p.amount, p.currency)
             lines.append(f"{t_icon} <b>#{p.id}</b> — {p.category_name or p.type}: <b>{amt_str}</b> ({p.description or ''})")
 
         lines.append("\nQuyidagi tugma orqali barchasini tasdiqlashingiz mumkin:")
@@ -308,7 +334,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         tx_id = int(callback.data.split(":")[-1])
         tx = await service.confirm_transaction(tx_id, actor_id=owner_id)
         if tx:
-            amt_str = service.format_money(tx.amount)
+            amt_str = service.format_money(tx.amount, tx.currency)
             await callback.answer("✅ Hisobga qo'shildi!")
             await callback.message.edit_text(
                 f"✅ <b>TRANZAKSIYA TASDIQLANDI VA QO'SHILDI</b>\n\n"
@@ -354,7 +380,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
 
     @router.callback_query(is_owner, F.data == "fin:week")
     async def cb_fin_week(callback: CallbackQuery) -> None:
-        today = datetime.date.today()
+        today = today_local()
         start = today - datetime.timedelta(days=today.weekday())
         summary = await service.get_weekly_summary(owner_id, start, today)
         text = _format_weekly_summary_text(summary, service)
@@ -362,14 +388,15 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
 
     @router.callback_query(is_owner, F.data == "fin:month")
     async def cb_fin_month(callback: CallbackQuery) -> None:
-        today = datetime.date.today()
+        today = today_local()
         summary = await service.get_monthly_summary(owner_id, today.year, today.month)
         text = _format_monthly_summary_text(summary, service)
+        text += await _usd_equivalent_note(service, owner_id, summary)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
 
     @router.callback_query(is_owner, F.data == "fin:budget")
     async def cb_fin_budget(callback: CallbackQuery) -> None:
-        period_key = datetime.date.today().strftime("%Y-%m")
+        period_key = today_local().strftime("%Y-%m")
         status = await service.get_budget_status(owner_id, period_key)
         if not status:
             await callback.message.edit_text(
@@ -405,7 +432,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             return
         lines = [f"⏳ <b>Kutilayotgan tranzaksiyalar ({len(pending)} ta):</b>\n"]
         for p in pending:
-            amt_str = service.format_money(p.amount)
+            amt_str = service.format_money(p.amount, p.currency)
             lines.append(f"• #{p.id} — {p.category_name}: <b>{amt_str}</b> ({p.description or '—'})")
         lines.append("\nQuyidagi tugma orqali barchasini tasdiqlashingiz mumkin:")
         await callback.message.edit_text(
@@ -415,7 +442,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
     @router.callback_query(is_owner, F.data == "fin:main")
     async def cb_fin_main(callback: CallbackQuery) -> None:
         summary = await service.get_daily_summary(owner_id)
-        now = datetime.date.today()
+        now = today_local()
         income_str = service.format_money(summary["total_income"])
         expense_str = service.format_money(summary["total_expense"])
         net_str = service.format_money(summary["net_balance"])
@@ -473,7 +500,7 @@ async def _process_finance_text(
         tx = created[0]
         t_label = "YANGI DAROMAD" if tx.type == "INCOME" else "YANGI XARAJAT"
         t_icon = "💰" if tx.type == "INCOME" else "💸"
-        amt_str = service.format_money(tx.amount)
+        amt_str = service.format_money(tx.amount, tx.currency)
 
         text_card = (
             f"📥 <b>{t_label}</b>{dup_warning}\n"
@@ -490,13 +517,39 @@ async def _process_finance_text(
         lines = [f"📥 <b>YANGI TRANZAKSIYALAR ({len(created)} ta)</b>{dup_warning}\n"]
         total = Decimal("0.00")
         for i, tx in enumerate(created, 1):
-            amt_str = service.format_money(tx.amount)
+            amt_str = service.format_money(tx.amount, tx.currency)
             total += tx.amount
             lines.append(f"{i}. {tx.category_name} — <b>{amt_str}</b> <i>({tx.description or ''})</i>")
 
         lines.append(f"\n<b>Jami summa:</b> <b>{service.format_money(total)}</b>")
         lines.append("\n<b>Hisobga qo'shishni tasdiqlaysizmi?</b>")
         await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=compound_pending_keyboard())
+
+
+async def _usd_equivalent_note(service: FinanceService, owner_id: int, summary: dict[str, Any]) -> str:
+    """Approximate so'm equivalent of USD amounts using the manually set rate (shown separately)."""
+    usd = (summary.get("by_currency") or {}).get("USD")
+    rate = await service.get_usd_rate(owner_id) if usd else None
+    if not usd or not rate:
+        return ""
+    return (
+        f"\n\n<i>Kurs {service.format_money(rate)} bo'yicha USD ≈ "
+        f"daromad {service.format_money(usd['income'] * rate)}, "
+        f"xarajat {service.format_money(usd['expense'] * rate)}</i>"
+    )
+
+
+def _other_currency_lines(summary: dict[str, Any], service: FinanceService) -> list[str]:
+    """Separate lines for non-UZS currencies; they are never added into the so'm totals."""
+    lines: list[str] = []
+    for cur, vals in (summary.get("by_currency") or {}).items():
+        if cur == "UZS":
+            continue
+        lines.append(
+            f"💵 <b>{cur}:</b> daromad {service.format_money(vals['income'], cur)}, "
+            f"xarajat {service.format_money(vals['expense'], cur)}"
+        )
+    return lines
 
 
 def _format_daily_summary_text(summary: dict[str, Any], service: FinanceService) -> str:
@@ -562,7 +615,7 @@ def _format_weekly_summary_text(summary: dict[str, Any], service: FinanceService
 
 
 def _format_monthly_summary_text(summary: dict[str, Any], service: FinanceService) -> str:
-    month_name = datetime.date(summary["year"], summary["month"], 1).strftime("%B %Y")
+    month_name = month_label(summary["year"], summary["month"])
     inc_str = service.format_money(summary["total_income"])
     exp_str = service.format_money(summary["total_expense"])
     net_str = service.format_money(summary["net_balance"])

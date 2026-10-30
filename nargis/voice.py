@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
+from finance.timeutil import month_label
 from nargis.brain import BrainActionRequest, BrainIntent, ConfidenceLevel, NargisBrain
 
 logger = logging.getLogger(__name__)
@@ -116,12 +117,15 @@ class VoiceIntelligenceEngine:
             from finance.keyboards import pending_transaction_keyboard
             first_tx = created[0]
             count = len(created)
-            total = fin_res.total_amount
+            total_str = " + ".join(
+                service.format_money(sum((t.amount for t in created if t.currency == c), Decimal("0")), c)
+                for c in dict.fromkeys(t.currency for t in created)
+            )
 
             if count == 1:
                 tx_type_label = "Daromad" if first_tx.type == "INCOME" else "Xarajat"
                 cat_display = first_tx.category_name or "Boshqa"
-                amt_str = service.format_money(first_tx.amount)
+                amt_str = service.format_money(first_tx.amount, first_tx.currency)
                 desc_line = f"• Izoh: <i>{first_tx.description}</i>\n" if first_tx.description else ""
                 date_line = f"• Sana: <b>{first_tx.transaction_date.strftime('%d.%m.%Y')}</b>\n"
                 text = (
@@ -142,13 +146,13 @@ class VoiceIntelligenceEngine:
             else:
                 from finance.keyboards import compound_pending_keyboard
                 items_str = "\n".join(
-                    f"• {t.category_name or 'Xarajat'}: {service.format_money(t.amount)}" for t in created
+                    f"• {t.category_name or 'Xarajat'}: {service.format_money(t.amount, t.currency)}" for t in created
                 )
                 type_noun = "xarajat" if all(t.type == "EXPENSE" for t in created) else ("daromad" if all(t.type == "INCOME" for t in created) else "tranzaksiya")
                 text = (
                     f"💰 <b>{count} ta {type_noun} aniqlandi:</b>\n\n"
                     f"{items_str}\n\n"
-                    f"<b>Jami:</b> {service.format_money(total)}\n\n"
+                    f"<b>Jami:</b> {total_str}\n\n"
                     f"<i>Hisobga qo'shish uchun tasdiqlaysizmi?</i>"
                 )
                 return {
@@ -205,15 +209,14 @@ class VoiceIntelligenceEngine:
                     ),
                 }
             elif period == "month":
-                start_of_month = today.replace(day=1)
-                monthly = await service.get_monthly_summary(self.owner_id, start_of_month, today)
+                monthly = await service.get_monthly_summary(self.owner_id, today.year, today.month)
                 total = monthly.get("total_expense", Decimal("0.00"))
                 income = monthly.get("total_income", Decimal("0.00"))
                 return {
                     "success": True,
                     "intent": action_req.intent.value,
                     "response_text": (
-                        f"📊 <b>Oylik moliyaviy hisobot ({today.strftime('%B %Y')}):</b>\n\n"
+                        f"📊 <b>Oylik moliyaviy hisobot ({month_label(today.year, today.month)}):</b>\n\n"
                         f"• 💸 Jami xarajat: <b>{service.format_money(total)}</b>\n"
                         f"• 💰 Jami daromad: <b>{service.format_money(income)}</b>"
                     ),
