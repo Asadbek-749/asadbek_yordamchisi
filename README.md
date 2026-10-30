@@ -37,13 +37,13 @@ A smart, personal Telegram assistant powered by your **Claude Code CLI** subscri
 
 The assistant supports two AI backends:
 1. **Google Gemini (Recommended if you don't have Claude subscription)**:
-   - Uses official Google Gemini API (default: `gemini-1.5-flash`).
+   - Uses official Google Gemini API (default: `gemini-3.5-flash-lite`; fallbacks: `gemini-3.6-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite`).
    - Get a free key at [Google AI Studio](https://aistudio.google.com/).
    - Set in `.env`:
      ```env
      AI_PROVIDER=gemini
      GEMINI_API_KEY=AIzaSy...
-     GEMINI_MODEL=gemini-1.5-flash
+     GEMINI_MODEL=gemini-3.5-flash-lite
      ```
 2. **Claude Code CLI (`claude -p`)**:
    - Uses your Claude subscription OAuth token (`sk-ant-oat...`) obtained from `claude setup-token`.
