@@ -14,7 +14,7 @@ import logging
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from discipline.db import get_session
@@ -259,7 +259,13 @@ class FinanceService(RecurringMixin):
             q = select(FinancialTransaction).where(
                 FinancialTransaction.owner_id == owner_id,
                 FinancialTransaction.amount == amount,
-                FinancialTransaction.category_name == category_name,
+                # category_name stores the display label ("🍔 Ovqat"); callers pass the key ("FOOD")
+                or_(
+                    FinancialTransaction.category_name == category_name,
+                    FinancialTransaction.category_id.in_(
+                        select(FinancialCategory.id).where(FinancialCategory.name == category_name)
+                    ),
+                ),
                 FinancialTransaction.created_at >= cutoff,
                 FinancialTransaction.status.in_(["PENDING", "CONFIRMED"]),
             )

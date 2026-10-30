@@ -509,3 +509,17 @@ async def test_scheduler_sends_backup_once_per_night(db_env):
     await sched._check_morning_and_evening_schedules(now_utc)
     await sched._check_morning_and_evening_schedules(now_utc + datetime.timedelta(minutes=1))
     assert bot.send_document.await_count == 1
+
+
+# ── duplicate detection compared a category key with a display name ────────
+
+@pytest.mark.asyncio
+async def test_duplicate_detection_matches_category_key(db_env):
+    from finance.extractor import ExtractedTransactionItem
+
+    svc = FinanceService()
+    item = ExtractedTransactionItem("EXPENSE", Decimal("45000"), "FOOD", "Tushlik", "UZS", datetime.date(2026, 10, 30))
+    await svc.create_pending_transactions(7, [item])
+    assert await svc.detect_duplicate(7, Decimal("45000"), "FOOD") is True
+    assert await svc.detect_duplicate(7, Decimal("45000"), "TRANSPORT") is False
+    assert await svc.detect_duplicate(8, Decimal("45000"), "FOOD") is False
