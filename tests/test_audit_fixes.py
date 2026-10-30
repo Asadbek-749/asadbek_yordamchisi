@@ -212,3 +212,40 @@ async def test_voice_monthly_query_works(db_env):
     res = await engine.process_voice_action("Bu oy qancha pul sarfladim?", user_id=1)
     assert res["success"] is True
     assert "Oylik" in res["response_text"]
+
+
+# ── feature 1: AI fallback for money talk the rules do not understand ──────
+
+class _JsonAI:
+    def __init__(self, payload: str) -> None:
+        self.payload = payload
+        self.calls = 0
+
+    async def generate(self, system_prompt: str, user_prompt: str) -> str:
+        self.calls += 1
+        return self.payload
+
+
+@pytest.mark.asyncio
+async def test_ai_fallback_used_only_when_rules_fail_and_text_is_financial():
+    payload = '{"transactions": [{"type": "EXPENSE", "amount": 50000, "category": "DEBT", "currency": "UZS", "description": "Qarz"}], "ambiguous": false}'
+    ai = _JsonAI(payload)
+    ex = FinanceExtractor(ai)
+
+    res = await ex.extract("Do'stimga ellik ming so'm qarz berdim")
+    assert ai.calls == 1
+    assert [(t.type, t.amount, t.category) for t in res.transactions] == [("EXPENSE", Decimal("50000"), "DEBT")]
+
+    # rules succeed -> no AI call
+    await ex.extract("Taksi 15 ming")
+    assert ai.calls == 1
+    # not financial -> no AI call
+    res = await ex.extract("Salom, ishlar qalay bugun")
+    assert ai.calls == 1 and not res.transactions
+
+
+@pytest.mark.asyncio
+async def test_ai_fallback_output_is_sanitised():
+    payload = '{"transactions": [{"type": "TRANSFER", "amount": 10, "category": "X"}, {"type": "income", "amount": "2500000", "category": "NOPE", "currency": "usd"}]}'
+    res = await FinanceExtractor(_JsonAI(payload)).extract("Menga ikki yarim million dollar keldi")
+    assert [(t.type, t.amount, t.category, t.currency) for t in res.transactions] == [("INCOME", Decimal("2500000"), "OTHER", "USD")]

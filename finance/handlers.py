@@ -467,18 +467,21 @@ async def _process_finance_text(
     extractor: FinanceExtractor,
     owner_id: int,
     source: str = "text",
-) -> None:
-    """Helper to process extracted transactions from text and prompt owner for confirmation."""
+) -> bool:
+    """Process extracted transactions from text and prompt owner for confirmation.
+
+    Returns True when the message was handled as a finance message (card or question sent).
+    """
     result = await extractor.extract(text)
 
     if result.is_ambiguous:
         question = result.clarification_question or "Qancha summa sarfladingiz yoki daromad oldingiz?"
         await message.answer(f"❓ {question}")
-        return
+        return True
 
     if not result.transactions:
         # Not a financial message
-        return
+        return False
 
     # Check for duplicate
     is_duplicate = False
@@ -507,7 +510,7 @@ async def _process_finance_text(
             f"{t_icon} <b>Turi:</b> {tx.type}\n"
             f"📌 <b>Kategoriya:</b> {tx.category_name}\n"
             f"💰 <b>Summa:</b> {amt_str}\n"
-            f"📅 <b>Sana:</b> Bugun\n"
+            f"📅 <b>Sana:</b> {tx.transaction_date.strftime('%d.%m.%Y')}\n"
             f"📝 <b>Izoh:</b> {tx.description or '—'}\n\n"
             f"<b>Hisobga qo'shishni tasdiqlaysizmi?</b>"
         )
@@ -515,15 +518,17 @@ async def _process_finance_text(
     else:
         # Compound transactions
         lines = [f"📥 <b>YANGI TRANZAKSIYALAR ({len(created)} ta)</b>{dup_warning}\n"]
-        total = Decimal("0.00")
+        totals: dict[str, Decimal] = {}
         for i, tx in enumerate(created, 1):
             amt_str = service.format_money(tx.amount, tx.currency)
-            total += tx.amount
+            totals[tx.currency] = totals.get(tx.currency, Decimal("0.00")) + tx.amount
             lines.append(f"{i}. {tx.category_name} — <b>{amt_str}</b> <i>({tx.description or ''})</i>")
 
-        lines.append(f"\n<b>Jami summa:</b> <b>{service.format_money(total)}</b>")
+        total_str = " + ".join(service.format_money(v, c) for c, v in totals.items())
+        lines.append(f"\n<b>Jami summa:</b> <b>{total_str}</b>")
         lines.append("\n<b>Hisobga qo'shishni tasdiqlaysizmi?</b>")
         await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=compound_pending_keyboard())
+    return True
 
 
 async def _usd_equivalent_note(service: FinanceService, owner_id: int, summary: dict[str, Any]) -> str:
@@ -575,6 +580,7 @@ def _format_daily_summary_text(summary: dict[str, Any], service: FinanceService)
     else:
         lines.append("<i>Bugun tasdiqlangan xarajatlar yo'q.</i>")
 
+    lines.extend(_other_currency_lines(summary, service))
     return "\n".join(lines)
 
 
@@ -611,6 +617,7 @@ def _format_weekly_summary_text(summary: dict[str, Any], service: FinanceService
     if top_tx:
         lines.append(f"🏆 <b>Eng katta xarajat:</b> {top_tx.category_name} — {service.format_money(top_tx.amount)}")
 
+    lines.extend(_other_currency_lines(summary, service))
     return "\n".join(lines)
 
 
@@ -648,5 +655,7 @@ def _format_monthly_summary_text(summary: dict[str, Any], service: FinanceServic
         lines.append(f"\n<b>DAROMAD MANBALARI:</b>")
         for src_name, amt in inc_cats:
             lines.append(f"• {src_name}: {service.format_money(amt)}")
+
+    lines.extend(_other_currency_lines(summary, service))
 
     return "\n".join(lines)

@@ -100,6 +100,11 @@ _EXPENSE_WORDS = [
 _INCOME_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _INCOME_WORDS) + r")\w*")
 _EXPENSE_RE = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(w) for w in _EXPENSE_WORDS) + r")\w*")
 
+_FINANCE_HINT_RE = re.compile(
+    r"so['`’]?m\b|\bsum\b|\bming\b|\bmln\b|million|dollar|\busd\b|\$|\bpul\b|xarajat|daromad|"
+    r"sarfla|ketdi|ishlatdim|to['`’‘]?ladim|toladim|oldim|berdim|tushdi|keldi|maosh|oylik|qarz|kredit"
+)
+
 _SPLIT_RE = re.compile(r";|,(?!\d)|(?<!\d),|\bva\b|\bhamda\b|\byana\b", re.IGNORECASE)
 
 _MULTIPLIERS = {"ming": Decimal("1000"), "k": Decimal("1000"), "тыс": Decimal("1000"),
@@ -308,6 +313,11 @@ class FinanceExtractor:
 
         return FinanceExtractionResult(transactions=transactions, is_ambiguous=False, raw_text=clean)
 
+    @staticmethod
+    def looks_financial(text: str) -> bool:
+        """Cheap gate: only talk about money to the AI when the message has a financial word."""
+        return bool(_FINANCE_HINT_RE.search(text.lower()))
+
     async def extract(self, text: str) -> FinanceExtractionResult:
         """Extract transactions using rules first, and AI fallback if ambiguous or complex."""
         rule_res = self.rule_based_extract(text)
@@ -315,7 +325,7 @@ class FinanceExtractor:
             return rule_res
 
         # If rule couldn't extract but text contains financial keywords, try AI extraction if generator is present
-        if self.ai is not None and any(w in text.lower() for w in ["so'm", "som", "ming", "million", "sarfladim", "ketdi", "daromad", "oldim"]):
+        if self.ai is not None and self.looks_financial(text):
             try:
                 ai_res = await self._ai_extract(text)
                 if ai_res.transactions or ai_res.is_ambiguous:
@@ -338,7 +348,7 @@ class FinanceExtractor:
             "Respond ONLY with valid JSON (no markdown, no quotes around JSON):\n"
             "{\n"
             '  "transactions": [\n'
-            '    {"type": "EXPENSE|INCOME", "amount": 45000, "category": "FOOD", "description": "Tushlik"}\n'
+            '    {"type": "EXPENSE|INCOME", "amount": 45000, "category": "FOOD", "currency": "UZS|USD", "description": "Tushlik"}\n'
             "  ],\n"
             '  "ambiguous": false,\n'
             '  "clarification_question": null\n'
@@ -357,11 +367,17 @@ class FinanceExtractor:
         items: List[ExtractedTransactionItem] = []
         for item in data.get("transactions", []):
             try:
-                tx_type = item.get("type", "EXPENSE").upper()
-                amt = Decimal(str(item.get("amount", 0)))
-                if amt <= Decimal("0"):
+                tx_type = str(item.get("type", "EXPENSE")).upper()
+                if tx_type not in ("INCOME", "EXPENSE"):
                     continue
-                cat = item.get("category", "OTHER").upper()
+                amt = Decimal(str(item.get("amount", 0)))
+                if amt <= Decimal("0") or amt > Decimal("100000000000"):
+                    continue
+                valid = INCOME_KEYWORDS if tx_type == "INCOME" else EXPENSE_KEYWORDS
+                cat = str(item.get("category", "OTHER")).upper()
+                if cat not in valid:
+                    cat = "OTHER"
+                currency = "USD" if str(item.get("currency", "UZS")).upper() == "USD" else "UZS"
                 desc = item.get("description") or cat
                 items.append(
                     ExtractedTransactionItem(
@@ -369,6 +385,7 @@ class FinanceExtractor:
                         amount=amt,
                         category=cat,
                         description=desc,
+                        currency=currency,
                         transaction_date=today_local(),
                     )
                 )

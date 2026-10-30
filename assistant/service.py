@@ -661,9 +661,11 @@ class Assistant:
                     from finance.service import FinanceService
                     fin_extractor = FinanceExtractor(self.generator)
                     fin_res = fin_extractor.rule_based_extract(raw_text)
-                    if fin_res.transactions or fin_res.is_ambiguous:
+                    # Rules found something, or the text talks about money: let the extractor
+                    # try Gemini as a fallback. Results are always shown with a confirm button.
+                    if fin_res.transactions or fin_res.is_ambiguous or fin_extractor.looks_financial(raw_text):
                         fin_service = FinanceService()
-                        await _process_finance_text(
+                        handled = await _process_finance_text(
                             message=message,
                             text=raw_text,
                             service=fin_service,
@@ -671,7 +673,8 @@ class Assistant:
                             owner_id=from_id,
                             source="text",
                         )
-                        return
+                        if handled:
+                            return
                 except Exception as _fe_err:
                     logger.warning("Finance extraction check error: %s", _fe_err)
 
