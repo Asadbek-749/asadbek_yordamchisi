@@ -223,3 +223,14 @@ Sozlash (bir marta):
 5. Deploydan keyin botda `/sheetsync` yuboring (mavjud barcha oylarni yozadi) va `/sheet` bilan havolani oling.
 
 JSON kalit hech qachon gitga qo'yilmasin. Sinxronlash xatosi bo'lsa egasiga qisqa xabar boradi (soatiga 1 ta).
+
+### Google Sheets — kalitsiz (oddiyroq) yo'l: Apps Script
+
+Google Cloud'da kalit yaratish bloklangan bo'lsa (tashkilot siyosati), service account kerak emas:
+1. Jadvalda **Extensions (Kengaytmalar) → Apps Script** ni oching, [docs/google_apps_script.gs](docs/google_apps_script.gs) ichidagi kodni qo'ying va `SECRET` ga uzun maxfiy so'z yozing.
+2. **Deploy → New deployment → Web app**: *Execute as: Me*, *Who has access: Anyone* → **Deploy**, ruxsat bering.
+3. Chiqqan `https://script.google.com/macros/s/.../exec` havolani oling.
+4. Railway Variables: `GOOGLE_APPS_SCRIPT_URL` (havola) va `GOOGLE_APPS_SCRIPT_SECRET` (1-qadamdagi so'z).
+5. Deploydan keyin botga `/sheetsync` yuboring.
+
+Ikkala usul ham sozlangan bo'lsa, Apps Script ishlatiladi.

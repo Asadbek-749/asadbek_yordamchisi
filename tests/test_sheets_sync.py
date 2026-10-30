@@ -132,3 +132,95 @@ def test_service_account_parsing_and_env_building():
     assert build_sync_from_env(raw, None, 1) is None
     assert build_sync_from_env("not json", "sheet", 1) is None
     assert build_sync_from_env(raw, " sheet-id ", 1).backend.spreadsheet_url().endswith("/sheet-id")
+
+
+# ── Apps Script backend (no Google Cloud key) ──────────────────────────────
+
+class _FakeAppsScript:
+    """Local server imitating Apps Script: POST -> 302 -> GET result."""
+
+    def __init__(self, secret: str = "s3cret") -> None:
+        import http.server
+        import threading
+
+        outer = self
+        self.secret = secret
+        self.received: list = []
+        self._result = b""
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if body.get("secret") != outer.secret:
+                    outer._result = json.dumps({"ok": False, "error": "forbidden"}).encode()
+                else:
+                    outer.received.append(body["sheets"])
+                    outer._result = json.dumps({"ok": True, "url": "https://docs.google.com/spreadsheets/d/XYZ"}).encode()
+                self.send_response(302)
+                self.send_header("Location", f"http://127.0.0.1:{self.server.server_port}/result")
+                self.end_headers()
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(outer._result)
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_port}/exec"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.server.shutdown()
+
+
+def test_apps_script_backend_posts_rows_and_follows_redirect():
+    from finance.sheets import AppsScriptBackend
+
+    fake = _FakeAppsScript()
+    try:
+        backend = AppsScriptBackend(fake.url, "s3cret", timeout=10)
+        assert "paydo bo'ladi" in backend.spreadsheet_url()
+        backend.write_worksheet("2026-10", [["ID", "Sana"], [1, "2026-10-15"]])
+        assert fake.received == [[{"title": "2026-10", "rows": [["ID", "Sana"], [1, "2026-10-15"]]}]]
+        assert backend.spreadsheet_url() == "https://docs.google.com/spreadsheets/d/XYZ"
+    finally:
+        fake.close()
+
+
+def test_apps_script_backend_rejects_wrong_secret_and_non_json():
+    from finance.sheets import AppsScriptBackend, AppsScriptError
+
+    fake = _FakeAppsScript()
+    try:
+        with pytest.raises(AppsScriptError, match="forbidden"):
+            AppsScriptBackend(fake.url, "wrong", timeout=10).write_worksheet("x", [["a"]])
+    finally:
+        fake.close()
+
+
+@pytest.mark.asyncio
+async def test_sheets_sync_works_through_apps_script(env):
+    from finance.sheets import AppsScriptBackend
+
+    svc, _, _ = env
+    fake = _FakeAppsScript()
+    try:
+        sync = SheetsSync(AppsScriptBackend(fake.url, "s3cret", timeout=10), owner_id=7)
+        await _confirmed(svc, Item("EXPENSE", Decimal("45000"), "FOOD", "Tushlik", "UZS", D))
+        assert await sync.sync_everything() == 3
+        titles = [batch[0]["title"] for batch in fake.received]
+        assert titles == ["2026-10", "Kunlik", "Oylik"]
+    finally:
+        fake.close()
+
+
+def test_apps_script_env_settings():
+    url = "https://script.google.com/macros/s/AKfy123/exec"
+    sync = build_sync_from_env(None, None, 1, apps_script_url=url, apps_script_secret=" abc ")
+    assert sync is not None and sync.backend._secret == "abc"
+    assert build_sync_from_env(None, None, 1, apps_script_url="http://evil.example/exec", apps_script_secret="x") is None
+    assert build_sync_from_env(None, None, 1, apps_script_url=url, apps_script_secret=None) is None

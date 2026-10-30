@@ -16,6 +16,7 @@ import base64
 import datetime
 import json
 import logging
+import urllib.request
 from collections import defaultdict
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Protocol, Set, Tuple
@@ -88,6 +89,43 @@ class GspreadBackend:
 
     def spreadsheet_url(self) -> str:
         return f"https://docs.google.com/spreadsheets/d/{self._id}"
+
+
+class AppsScriptError(RuntimeError):
+    """The Apps Script web app rejected the request (wrong secret, script error, bad response)."""
+
+
+class AppsScriptBackend:
+    """Writes worksheets through a Google Apps Script web app bound to the spreadsheet.
+
+    No Google Cloud project or service-account key is needed: the script runs as the sheet's
+    owner and only accepts requests that carry the shared secret.
+    """
+
+    def __init__(self, url: str, secret: str, timeout: float = 60.0) -> None:
+        self._url = url.strip()
+        self._secret = secret
+        self._timeout = timeout
+        self._sheet_url = ""
+
+    def write_worksheet(self, title: str, rows: List[List[Any]]) -> None:
+        body = json.dumps({"secret": self._secret, "sheets": [{"title": title, "rows": rows}]}).encode("utf-8")
+        request = urllib.request.Request(
+            self._url, data=body, headers={"Content-Type": "application/json"}, method="POST"
+        )
+        # Apps Script answers a POST with a 302 to the result; urllib follows it with a GET, as required.
+        with urllib.request.urlopen(request, timeout=self._timeout) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(raw)
+        except ValueError:
+            raise AppsScriptError("Apps Script javobi JSON emas (skript e'lon qilinganini tekshiring)") from None
+        if not payload.get("ok"):
+            raise AppsScriptError(str(payload.get("error", "unknown error"))[:100])
+        self._sheet_url = payload.get("url") or self._sheet_url
+
+    def spreadsheet_url(self) -> str:
+        return self._sheet_url or "(birinchi sinxronlashdan keyin havola paydo bo'ladi)"
 
 
 def _num(v: Decimal) -> float | int:
@@ -212,8 +250,25 @@ class SheetsSync:
             await asyncio.sleep(interval)
 
 
-def build_sync_from_env(raw_credentials: Optional[str], spreadsheet_id: Optional[str], owner_id: int) -> Optional[SheetsSync]:
-    """Create a SheetsSync, or None when Google Sheets is not configured / credentials are unusable."""
+def build_sync_from_env(
+    raw_credentials: Optional[str],
+    spreadsheet_id: Optional[str],
+    owner_id: int,
+    apps_script_url: Optional[str] = None,
+    apps_script_secret: Optional[str] = None,
+) -> Optional[SheetsSync]:
+    """Create a SheetsSync, or None when Google Sheets is not configured / settings are unusable.
+
+    The Apps Script route (URL + secret, no key file) is preferred when both values are present.
+    """
+    if apps_script_url and apps_script_secret:
+        url = apps_script_url.strip()
+        if not url.startswith("https://script.google.com/"):
+            logger.warning("GOOGLE_APPS_SCRIPT_URL must start with https://script.google.com/ ; Sheets sync disabled.")
+            return None
+        logger.info("Google Sheets sync enabled (Apps Script web app).")
+        return SheetsSync(AppsScriptBackend(url, apps_script_secret.strip()), owner_id)
+
     if not raw_credentials or not spreadsheet_id:
         return None
     try:

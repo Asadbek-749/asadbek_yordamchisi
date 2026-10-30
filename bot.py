@@ -310,6 +310,8 @@ async def run_bot(settings: Settings) -> None:
                 os.environ.pop("GOOGLE_SERVICE_ACCOUNT_JSON", None),
                 os.environ.pop("GOOGLE_SHEETS_ID", None),
                 settings.owner_id,
+                apps_script_url=os.environ.pop("GOOGLE_APPS_SCRIPT_URL", None),
+                apps_script_secret=os.environ.pop("GOOGLE_APPS_SCRIPT_SECRET", None),
             )
             if sheets_sync is not None:
                 finance_service_module.change_hook = sheets_sync.mark_dirty

@@ -267,8 +267,8 @@ def build_finance_router(
     async def cmd_sheet(message: Message) -> None:
         if sheets_sync is None:
             await message.answer(
-                "ℹ️ Google Sheets ulanmagan. Railway'da <code>GOOGLE_SHEETS_ID</code> va "
-                "<code>GOOGLE_SERVICE_ACCOUNT_JSON</code> o'zgaruvchilarini qo'shing (README'dagi ko'rsatma).",
+                "ℹ️ Google Sheets ulanmagan. Railway'da <code>GOOGLE_APPS_SCRIPT_URL</code> va "
+                "<code>GOOGLE_APPS_SCRIPT_SECRET</code> o'zgaruvchilarini qo'shing (README'dagi ko'rsatma).",
                 parse_mode="HTML",
             )
             return
@@ -287,8 +287,8 @@ def build_finance_router(
         except Exception as exc:
             logger.warning("Manual sheet sync failed: %s", type(exc).__name__)
             await status.edit_text(
-                f"❌ Sinxronlash xatosi: <code>{type(exc).__name__}</code>. Jadval service account'ga "
-                "'Editor' sifatida ulashilganini tekshiring.",
+                f"❌ Sinxronlash xatosi: <code>{type(exc).__name__}</code>. Apps Script havolasi va maxfiy so'z "
+                "(yoki service account huquqi) to'g'riligini tekshiring.",
                 parse_mode="HTML",
             )
             return
