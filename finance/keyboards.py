@@ -59,3 +59,30 @@ def back_to_finance_keyboard() -> InlineKeyboardMarkup:
         ]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def edit_menu_keyboard(transaction_id: int) -> InlineKeyboardMarkup:
+    """What to change on a pending transaction."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💰 Summa", callback_data=f"fin:editamt:{transaction_id}"),
+                InlineKeyboardButton(text="📌 Kategoriya", callback_data=f"fin:editcat:{transaction_id}"),
+            ],
+            [InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"fin:editback:{transaction_id}")],
+        ]
+    )
+
+
+def category_choice_keyboard(transaction_id: int, categories: list) -> InlineKeyboardMarkup:
+    """Category picker (two per row). callback_data stays far below Telegram's 64-byte limit."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for i in range(0, len(categories), 2):
+        rows.append(
+            [
+                InlineKeyboardButton(text=c.display_name, callback_data=f"fin:setcat:{transaction_id}:{c.name}")
+                for c in categories[i : i + 2]
+            ]
+        )
+    rows.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"fin:editback:{transaction_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

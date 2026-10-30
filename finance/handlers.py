@@ -16,7 +16,9 @@ from aiogram.types import CallbackQuery, Message
 from finance.extractor import FinanceExtractor
 from finance.keyboards import (
     back_to_finance_keyboard,
+    category_choice_keyboard,
     compound_pending_keyboard,
+    edit_menu_keyboard,
     main_finance_keyboard,
     pending_transaction_keyboard,
 )
@@ -457,7 +459,163 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         )
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=main_finance_keyboard())
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # ✏️ Tahrirlash: summa va kategoriyani bot ichida o'zgartirish
+    # ─────────────────────────────────────────────────────────────────────────
+    edit_state: dict[int, int] = {}  # owner_id -> transaction awaiting a new amount
+
+    async def _show_card(callback: CallbackQuery, tx: Any, header: str) -> None:
+        await callback.message.edit_text(
+            _pending_card_text(service, tx, header),
+            parse_mode="HTML",
+            reply_markup=pending_transaction_keyboard(tx.id),
+        )
+
+    async def _editable(callback: CallbackQuery, tx_id: int) -> Optional[Any]:
+        tx = await service.get_transaction(tx_id, owner_id)
+        if tx is None or tx.status == "CANCELLED":
+            await callback.answer("❌ Tranzaksiya topilmadi yoki bekor qilingan.", show_alert=True)
+            return None
+        return tx
+
+    @router.callback_query(is_owner, F.data.startswith("fin:edit:"))
+    async def cb_edit_menu(callback: CallbackQuery) -> None:
+        tx = await _editable(callback, int(callback.data.split(":")[-1]))
+        if tx is None:
+            return
+        edit_state.pop(owner_id, None)
+        await callback.answer()
+        await callback.message.edit_text(
+            "✏️ <b>Nimani o'zgartiramiz?</b>", parse_mode="HTML", reply_markup=edit_menu_keyboard(tx.id)
+        )
+
+    @router.callback_query(is_owner, F.data.startswith("fin:editback:"))
+    async def cb_edit_back(callback: CallbackQuery) -> None:
+        tx = await _editable(callback, int(callback.data.split(":")[-1]))
+        if tx is None:
+            return
+        edit_state.pop(owner_id, None)
+        await callback.answer()
+        await _show_card(callback, tx, "📥 <b>YOZUV</b>")
+
+    @router.callback_query(is_owner, F.data.startswith("fin:editamt:"))
+    async def cb_edit_amount(callback: CallbackQuery) -> None:
+        tx = await _editable(callback, int(callback.data.split(":")[-1]))
+        if tx is None:
+            return
+        edit_state[owner_id] = tx.id
+        await callback.answer()
+        await callback.message.edit_text(
+            "💰 <b>Yangi summani yozing</b> (masalan: <code>50 ming</code> yoki <code>1 200 000</code>).\n"
+            "Bekor qilish uchun: <code>bekor</code>",
+            parse_mode="HTML",
+        )
+
+    @router.callback_query(is_owner, F.data.startswith("fin:editcat:"))
+    async def cb_edit_category(callback: CallbackQuery) -> None:
+        tx = await _editable(callback, int(callback.data.split(":")[-1]))
+        if tx is None:
+            return
+        cats = await service.list_categories(tx.type)
+        await callback.answer()
+        await callback.message.edit_text(
+            "📌 <b>Kategoriyani tanlang:</b>",
+            parse_mode="HTML",
+            reply_markup=category_choice_keyboard(tx.id, cats),
+        )
+
+    @router.callback_query(is_owner, F.data.startswith("fin:setcat:"))
+    async def cb_set_category(callback: CallbackQuery) -> None:
+        _, _, raw_id, cat_key = callback.data.split(":", 3)
+        if await _editable(callback, int(raw_id)) is None:
+            return
+        tx = await service.edit_transaction(int(raw_id), actor_id=owner_id, new_category_key=cat_key)
+        await callback.answer("✅ Kategoriya o'zgartirildi")
+        await _show_card(callback, tx, "✏️ <b>YANGILANDI</b>")
+
+    def _awaiting_new_amount(message: Message) -> bool:
+        text = (message.text or "").strip()
+        return owner_id in edit_state and bool(text) and not text.startswith("/")
+
+    @router.message(is_owner, F.text, _awaiting_new_amount)
+    async def msg_new_amount(message: Message) -> None:
+        tx_id = edit_state[owner_id]
+        text = message.text.strip()
+        if text.lower() in ("bekor", "bekor qilish", "cancel"):
+            edit_state.pop(owner_id, None)
+            tx = await service.get_transaction(tx_id, owner_id)
+            if tx is not None:
+                await message.answer(
+                    _pending_card_text(service, tx, "📥 <b>YOZUV</b>"),
+                    parse_mode="HTML",
+                    reply_markup=pending_transaction_keyboard(tx.id),
+                )
+            return
+
+        from finance.extractor import find_amount
+        found = find_amount(text)
+        if found is None or found[0] <= Decimal("0"):
+            await message.answer("❌ Summani tushunmadim. Masalan: <code>50 ming</code>. Bekor qilish: <code>bekor</code>", parse_mode="HTML")
+            return
+
+        edit_state.pop(owner_id, None)
+        tx = await service.edit_transaction(tx_id, actor_id=owner_id, new_amount=found[0])
+        if tx is None or tx.owner_id != owner_id:
+            await message.answer("❌ Tranzaksiya topilmadi yoki bekor qilingan.")
+            return
+        await message.answer(
+            _pending_card_text(service, tx, "✏️ <b>YANGILANDI</b>"),
+            parse_mode="HTML",
+            reply_markup=pending_transaction_keyboard(tx.id),
+        )
+
+    # Dashboard buttons that previously did nothing
+    @router.callback_query(is_owner, F.data.in_({"fin:add_income", "fin:add_expense"}))
+    async def cb_add_hint(callback: CallbackQuery) -> None:
+        kind = "daromadni" if callback.data == "fin:add_income" else "xarajatni"
+        example = "Oylik 3 million oldim" if callback.data == "fin:add_income" else "Tushlik 45 ming"
+        await callback.answer()
+        await callback.message.answer(
+            f"✍️ {kind.capitalize()} oddiy xabar bilan yozing yoki ovoz yuboring.\nMasalan: <code>{example}</code>",
+            parse_mode="HTML",
+        )
+
+    @router.callback_query(is_owner, F.data == "fin:analytics")
+    async def cb_analytics(callback: CallbackQuery) -> None:
+        from finance.intelligence import FinanceIntelligenceEngine
+        intel = FinanceIntelligenceEngine(owner_id)
+        report = intel.generate_full_comparison_report(await intel.compare_weekly_spending())
+        await callback.answer()
+        await callback.message.edit_text(report, parse_mode="HTML", reply_markup=back_to_finance_keyboard())
+
+    @router.callback_query(is_owner, F.data == "fin:settings")
+    async def cb_settings(callback: CallbackQuery) -> None:
+        rate = await service.get_usd_rate(owner_id)
+        rate_line = f"{service.format_money(rate)}" if rate else "belgilanmagan"
+        await callback.answer()
+        await callback.message.edit_text(
+            "⚙️ <b>Moliya sozlamalari</b>\n\n"
+            f"• Dollar kursi: <b>{rate_line}</b> — <code>/setrate 12650</code>\n"
+            "• Oylik byudjet — <code>/setbudget 4 million</code>\n"
+            "• Oylik hisobot Excelda — <code>/export</code>",
+            parse_mode="HTML",
+            reply_markup=back_to_finance_keyboard(),
+        )
+
     return router
+
+
+def _pending_card_text(service: FinanceService, tx: Any, header: str) -> str:
+    t_icon = "💰" if tx.type == "INCOME" else "💸"
+    return (
+        f"{header}\n"
+        f"{t_icon} <b>Turi:</b> {'Daromad' if tx.type == 'INCOME' else 'Xarajat'}\n"
+        f"📌 <b>Kategoriya:</b> {tx.category_name}\n"
+        f"💰 <b>Summa:</b> {service.format_money(tx.amount, tx.currency)}\n"
+        f"📅 <b>Sana:</b> {tx.transaction_date.strftime('%d.%m.%Y')}\n"
+        f"📝 <b>Izoh:</b> {tx.description or '—'}\n\n"
+        f"<b>Hisobga qo'shishni tasdiqlaysizmi?</b>"
+    )
 
 
 async def _process_finance_text(

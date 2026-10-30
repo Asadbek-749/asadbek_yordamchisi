@@ -231,12 +231,26 @@ class FinanceService:
 
         return created_records
 
+    async def get_transaction(self, transaction_id: int, owner_id: int) -> Optional[FinancialTransaction]:
+        """Fetch a transaction only if it belongs to the owner."""
+        async with get_session() as session:
+            tx = await session.get(FinancialTransaction, transaction_id)
+            return tx if tx and tx.owner_id == owner_id else None
+
+    async def list_categories(self, tx_type: str) -> List[FinancialCategory]:
+        await self.ensure_default_categories()
+        async with get_session() as session:
+            q = select(FinancialCategory).where(FinancialCategory.type == tx_type).order_by(FinancialCategory.id)
+            return list((await session.execute(q)).scalars().all())
+
     async def confirm_transaction(self, transaction_id: int, actor_id: int) -> Optional[FinancialTransaction]:
         """Move transaction from PENDING to CONFIRMED. Now included in balances and accounting."""
         async with get_session() as session:
             tx = await session.get(FinancialTransaction, transaction_id)
-            if not tx:
-                return None
+            if not tx or tx.status == "CANCELLED":
+                return None  # a cancelled record must never come back from an old button
+            if tx.status in ("CONFIRMED", "EDITED"):
+                return tx  # already counted; double-click is harmless
 
             old_status = tx.status
             tx.status = "CONFIRMED"
@@ -287,14 +301,31 @@ class FinanceService:
         new_amount: Optional[Decimal] = None,
         new_category_name: Optional[str] = None,
         new_description: Optional[str] = None,
+        new_category_key: Optional[str] = None,
     ) -> Optional[FinancialTransaction]:
-        """Edit a transaction with full audit trail."""
+        """Edit a transaction with full audit trail.
+
+        new_category_key is a system category name (e.g. "FOOD") and also updates category_id.
+        """
         async with get_session() as session:
             tx = await session.get(FinancialTransaction, transaction_id)
-            if not tx:
+            if not tx or tx.status == "CANCELLED":
                 return None
 
             old_data = {"amount": str(tx.amount), "category": tx.category_name, "desc": tx.description}
+
+            if new_category_key is not None:
+                cat = (
+                    await session.execute(
+                        select(FinancialCategory).where(
+                            FinancialCategory.name == new_category_key,
+                            FinancialCategory.type == tx.type,
+                        )
+                    )
+                ).scalars().first()
+                if cat:
+                    tx.category_id = cat.id
+                    tx.category_name = cat.display_name
 
             if new_amount is not None:
                 tx.amount = new_amount

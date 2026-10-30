@@ -249,3 +249,42 @@ async def test_ai_fallback_output_is_sanitised():
     payload = '{"transactions": [{"type": "TRANSFER", "amount": 10, "category": "X"}, {"type": "income", "amount": "2500000", "category": "NOPE", "currency": "usd"}]}'
     res = await FinanceExtractor(_JsonAI(payload)).extract("Menga ikki yarim million dollar keldi")
     assert [(t.type, t.amount, t.category, t.currency) for t in res.transactions] == [("INCOME", Decimal("2500000"), "OTHER", "USD")]
+
+
+# ── feature 2: editing a pending record ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_edit_pending_amount_and_category(db_env):
+    from finance.extractor import ExtractedTransactionItem
+    from finance.keyboards import category_choice_keyboard, pending_transaction_keyboard
+
+    svc = FinanceService()
+    item = ExtractedTransactionItem("EXPENSE", Decimal("45000"), "FOOD", "Tushlik", "UZS", datetime.date(2026, 10, 30))
+    tx = (await svc.create_pending_transactions(7, [item]))[0]
+
+    assert any(b.callback_data.startswith("fin:edit:") for b in pending_transaction_keyboard(tx.id).inline_keyboard[0])
+
+    edited = await svc.edit_transaction(tx.id, 7, new_amount=Decimal("60000"), new_category_key="TRANSPORT")
+    assert edited.amount == Decimal("60000")
+    assert edited.status == "PENDING"  # still waits for confirmation
+    assert "Transport" in edited.category_name
+
+    cats = await svc.list_categories("EXPENSE")
+    kb = category_choice_keyboard(tx.id, cats)
+    assert all(len(b.callback_data.encode()) <= 64 for row in kb.inline_keyboard for b in row)
+
+    # only the owner can load the record
+    assert await svc.get_transaction(tx.id, 8) is None
+    assert (await svc.get_transaction(tx.id, 7)).id == tx.id
+
+
+@pytest.mark.asyncio
+async def test_cancelled_record_cannot_be_revived_by_old_button(db_env):
+    from finance.extractor import ExtractedTransactionItem
+
+    svc = FinanceService()
+    item = ExtractedTransactionItem("EXPENSE", Decimal("1000"), "FOOD", "x", "UZS", datetime.date(2026, 10, 30))
+    tx = (await svc.create_pending_transactions(7, [item]))[0]
+    await svc.cancel_transaction(tx.id, 7)
+    assert await svc.confirm_transaction(tx.id, 7) is None
+    assert await svc.edit_transaction(tx.id, 7, new_amount=Decimal("5")) is None
