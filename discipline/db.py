@@ -20,6 +20,7 @@ from discipline.models import Base
 logger = logging.getLogger(__name__)
 
 _engine: Optional[AsyncEngine] = None
+_database_url: Optional[str] = None
 _session_factory: Optional[async_sessionmaker[AsyncSession]] = None
 
 
@@ -90,7 +91,7 @@ async def init_db(
     db_url: Optional[str] = None, data_dir: Optional[Path] = None
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     """Initialize database engine, create tables if not present, and cache sessionmaker."""
-    global _engine, _session_factory
+    global _engine, _session_factory, _database_url
 
     resolved_url = resolve_database_url(db_url, data_dir)
     # Mask password for logs
@@ -100,6 +101,7 @@ async def init_db(
     engine, factory = create_engine_and_factory(resolved_url)
     _engine = engine
     _session_factory = factory
+    _database_url = resolved_url
     # Ensure all domain models are registered in Base.metadata before create_all
     try:
         import finance.models  # noqa: F401
@@ -133,6 +135,11 @@ async def close_db() -> None:
         _engine = None
         _session_factory = None
         logger.info("Database connection closed.")
+
+
+def get_database_url() -> Optional[str]:
+    """Resolved URL of the initialised database (contains credentials for PostgreSQL: never log it)."""
+    return _database_url
 
 
 def is_db_initialized() -> bool:

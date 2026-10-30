@@ -445,3 +445,67 @@ async def test_gemini_quota_and_key_errors_trigger_hook(monkeypatch):
     with pytest.raises(GeminiAuthError):
         await client.generate("s", "u")
     assert seen == ["ai_quota", "ai_auth"]
+
+
+# ── feature 6: nightly SQLite backup ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_backup_is_a_consistent_gzipped_copy(db_env, tmp_path):
+    import gzip
+    import sqlite3
+
+    from discipline.db import get_database_url
+    from finance.extractor import ExtractedTransactionItem
+    from notification.backup import backup_filename, send_backup, sqlite_path_from_url
+
+    svc = FinanceService()
+    await svc.create_pending_transactions(
+        7, [ExtractedTransactionItem("EXPENSE", Decimal("1000"), "FOOD", "x", "UZS", datetime.date(2026, 10, 30))]
+    )
+
+    url = get_database_url()
+    assert sqlite_path_from_url(url) is not None
+
+    bot = MagicMock()
+    bot.send_document = AsyncMock()
+    day = datetime.date(2026, 10, 31)
+    assert await send_backup(bot, 42, url, day) is True
+
+    owner, doc = bot.send_document.await_args.args[:2]
+    assert owner == 42 and doc.filename == backup_filename(day) == "nargis_backup_2026-10-31.db.gz"
+
+    restored = tmp_path / "restored.db"
+    restored.write_bytes(gzip.decompress(doc.data))
+    con = sqlite3.connect(restored)
+    try:
+        assert con.execute("SELECT COUNT(*) FROM financial_transactions").fetchone()[0] == 1
+    finally:
+        con.close()
+
+
+@pytest.mark.asyncio
+async def test_backup_skipped_for_postgres_and_memory():
+    from notification.backup import send_backup, sqlite_path_from_url
+
+    bot = MagicMock()
+    bot.send_document = AsyncMock()
+    assert sqlite_path_from_url("postgresql+asyncpg://u:p@h/db") is None
+    assert sqlite_path_from_url("sqlite+aiosqlite:///:memory:") is None
+    assert await send_backup(bot, 1, "postgresql+asyncpg://u:p@h/db", datetime.date(2026, 10, 31)) is False
+    bot.send_document.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_sends_backup_once_per_night(db_env):
+    from discipline.scheduler import DisciplineScheduler
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    bot.send_document = AsyncMock()
+    sched = DisciplineScheduler(bot, MagicMock(), owner_id=42)
+    sched.proactive_engine = None
+
+    now_utc = datetime.datetime(2026, 10, 30, 22, 10, tzinfo=UTC)  # 03:10 on 31 Oct in Tashkent
+    await sched._check_morning_and_evening_schedules(now_utc)
+    await sched._check_morning_and_evening_schedules(now_utc + datetime.timedelta(minutes=1))
+    assert bot.send_document.await_count == 1

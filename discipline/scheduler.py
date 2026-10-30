@@ -187,6 +187,13 @@ class DisciplineScheduler:
             if is_reminder_due(local_now, "09:00"):
                 await self._send_recurring_reminders(repo, local_now.date())
 
+            # 3c. Nightly database backup to the owner (SQLite only), 03:00 local with catch-up
+            if is_reminder_due(local_now, "03:00"):
+                b_key = f"backup_{self.owner_id}_{local_date_str}"
+                if not await repo.is_reminder_delivered(b_key):
+                    await repo.record_reminder_delivered(b_key, self.owner_id, "nightly_backup")
+                    await self._send_nightly_backup(local_now.date())
+
             # 4. Check monthly budget alerts periodically
             period_key = local_now.strftime("%Y-%m")
             try:
@@ -197,6 +204,16 @@ class DisciplineScheduler:
                     await self.bot.send_message(self.owner_id, alert, parse_mode="HTML")
             except Exception as _b_err:
                 logger.warning("Budget alert check error: %s", _b_err)
+
+    async def _send_nightly_backup(self, today: datetime.date) -> None:
+        try:
+            from discipline.db import get_database_url
+            from notification.backup import send_backup
+            await send_backup(self.bot, self.owner_id, get_database_url(), today)
+        except Exception as e:
+            logger.error("Nightly backup failed: %s", type(e).__name__)
+            if self.alerter is not None:
+                self.alerter.alert_nowait("scheduler", f"zaxira nusxa: {type(e).__name__}")
 
     async def _send_recurring_reminders(self, repo: DisciplineRepository, today: datetime.date) -> None:
         """Remind about recurring payments due today; the idempotency key makes this once per month."""
