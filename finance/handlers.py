@@ -18,6 +18,7 @@ from finance.keyboards import (
     back_to_finance_keyboard,
     category_choice_keyboard,
     compound_pending_keyboard,
+    dashboard_keyboard,
     edit_menu_keyboard,
     main_finance_keyboard,
     pending_transaction_keyboard,
@@ -49,6 +50,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             "setbudget",
             "setrate",
             "export",
+            "dashboard",
             "addrecurring",
             "recurring",
             "delrecurring",
@@ -184,6 +186,78 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             parse_mode="HTML",
             reply_markup=back_to_finance_keyboard(),
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🖼 Dashboard: chiroyli rasm + raqamlar (kun / hafta / oy)
+    # ─────────────────────────────────────────────────────────────────────────
+    async def _send_dashboard(
+        target: Message, kind: str = "month", year: Optional[int] = None, month: Optional[int] = None
+    ) -> None:
+        import asyncio
+
+        from aiogram.types import BufferedInputFile
+        from finance.dashboard import collect_dashboard_data, render_dashboard_png
+
+        data = await collect_dashboard_data(owner_id, kind, year=year, month=month)
+        png = await asyncio.to_thread(render_dashboard_png, data)
+        net_prefix = "+" if data.net >= 0 else "−"
+        lines = [
+            f"<b>{data.title}</b>",
+            f"💰 Daromad: <b>{service.format_money(data.income)}</b>",
+            f"💸 Xarajat: <b>{service.format_money(data.expense)}</b>",
+            f"📈 Sof balans: <b>{net_prefix}{service.format_money(abs(data.net))}</b>",
+            f"📅 O'rtacha kunlik xarajat: <b>{service.format_money(data.avg_daily_expense)}</b>",
+        ]
+        for cur, vals in data.other_currencies.items():
+            lines.append(
+                f"💵 {cur}: +{service.format_money(vals['income'], cur)} / −{service.format_money(vals['expense'], cur)}"
+            )
+        await target.answer_photo(
+            BufferedInputFile(png, filename="dashboard.png"),
+            caption="\n".join(lines),
+            parse_mode="HTML",
+            reply_markup=dashboard_keyboard(),
+        )
+
+    @router.message(is_owner, Command("dashboard"))
+    async def cmd_dashboard(message: Message) -> None:
+        args = (message.text or "").split()[1:]
+        arg = args[0].lower() if args else "oy"
+        kinds = {"kun": "day", "bugun": "day", "hafta": "week", "oy": "month"}
+        if arg in kinds:
+            await _send_dashboard(message, kinds[arg])
+            return
+        try:
+            parsed = datetime.datetime.strptime(arg, "%Y-%m")
+        except ValueError:
+            await message.answer(
+                "ℹ️ Format: <code>/dashboard</code>, <code>/dashboard kun</code>, <code>/dashboard hafta</code>, "
+                "<code>/dashboard 2026-09</code>",
+                parse_mode="HTML",
+            )
+            return
+        await _send_dashboard(message, "month", parsed.year, parsed.month)
+
+    @router.callback_query(is_owner, F.data.startswith("fin:dash:"))
+    async def cb_dashboard(callback: CallbackQuery) -> None:
+        kind = callback.data.split(":")[-1]
+        if kind not in ("day", "week", "month"):
+            await callback.answer()
+            return
+        await callback.answer("Dashboard tayyorlanmoqda…")
+        await _send_dashboard(callback.message, kind)
+
+    def _asks_for_dashboard(message: Message) -> bool:
+        text = (message.text or "").strip().lower()
+        return 0 < len(text) <= 60 and not text.startswith("/") and any(
+            w in text for w in ("dashboard", "dashbord", "dasbord", "grafik", "diagramma")
+        )
+
+    @router.message(is_owner, F.text, _asks_for_dashboard)
+    async def msg_dashboard_request(message: Message) -> None:
+        text = message.text.lower()
+        kind = "day" if any(w in text for w in ("kun", "bugun")) else ("week" if "hafta" in text else "month")
+        await _send_dashboard(message, kind)
 
     @router.message(is_owner, Command("export"))
     async def cmd_export(message: Message) -> None:

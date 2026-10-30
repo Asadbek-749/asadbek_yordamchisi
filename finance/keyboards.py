@@ -43,6 +43,7 @@ def main_finance_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="🎯 Byudjet", callback_data="fin:budget"),
             InlineKeyboardButton(text="⏳ Pending", callback_data="fin:pending"),
         ],
+        [InlineKeyboardButton(text="🖼 Dashboard", callback_data="fin:dash:month")],
         [
             InlineKeyboardButton(text="📈 Tahlil", callback_data="fin:analytics"),
             InlineKeyboardButton(text="⚙️ Sozlamalar", callback_data="fin:settings"),
@@ -96,5 +97,19 @@ def recurring_reminder_keyboard(recurring_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="➕ Xarajatga qo'shish", callback_data=f"fin:recadd:{recurring_id}"),
                 InlineKeyboardButton(text="⏭ Keyinroq", callback_data=f"fin:recskip:{recurring_id}"),
             ]
+        ]
+    )
+
+
+def dashboard_keyboard() -> InlineKeyboardMarkup:
+    """Period switcher under a dashboard image."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📅 Bugun", callback_data="fin:dash:day"),
+                InlineKeyboardButton(text="📊 Hafta", callback_data="fin:dash:week"),
+                InlineKeyboardButton(text="📆 Oy", callback_data="fin:dash:month"),
+            ],
+            [InlineKeyboardButton(text="🔙 Moliya menyusi", callback_data="fin:main")],
         ]
     )
