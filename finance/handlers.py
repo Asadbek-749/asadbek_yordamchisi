@@ -29,7 +29,9 @@ from finance.timeutil import month_label, today_local
 logger = logging.getLogger(__name__)
 
 
-def build_finance_router(service: FinanceService, owner_id: int, ai_generator: Optional[Any] = None) -> Router:
+def build_finance_router(
+    service: FinanceService, owner_id: int, ai_generator: Optional[Any] = None, sheets_sync: Optional[Any] = None
+) -> Router:
     """Build and return aiogram router for the Personal Finance module."""
     router = Router(name="finance_router")
     is_owner = F.from_user.id == owner_id
@@ -51,6 +53,8 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             "setrate",
             "export",
             "dashboard",
+            "sheet",
+            "sheetsync",
             "addrecurring",
             "recurring",
             "delrecurring",
@@ -258,6 +262,37 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         text = message.text.lower()
         kind = "day" if any(w in text for w in ("kun", "bugun")) else ("week" if "hafta" in text else "month")
         await _send_dashboard(message, kind)
+
+    @router.message(is_owner, Command("sheet"))
+    async def cmd_sheet(message: Message) -> None:
+        if sheets_sync is None:
+            await message.answer(
+                "ℹ️ Google Sheets ulanmagan. Railway'da <code>GOOGLE_SHEETS_ID</code> va "
+                "<code>GOOGLE_SERVICE_ACCOUNT_JSON</code> o'zgaruvchilarini qo'shing (README'dagi ko'rsatma).",
+                parse_mode="HTML",
+            )
+            return
+        pending = sheets_sync.pending_months
+        note = f"\n⏳ Sinxronlanmagan oylar: {len(pending)}" if pending else "\n✅ Hammasi sinxron."
+        await message.answer(f'📗 <a href="{sheets_sync.backend.spreadsheet_url()}">Google Sheets jadvali</a>{note}', parse_mode="HTML")
+
+    @router.message(is_owner, Command("sheetsync"))
+    async def cmd_sheetsync(message: Message) -> None:
+        if sheets_sync is None:
+            await message.answer("ℹ️ Google Sheets ulanmagan. /sheet buyrug'ini ko'ring.")
+            return
+        status = await message.answer("⏳ Google Sheets'ga yozilmoqda…")
+        try:
+            count = await sheets_sync.sync_everything()
+        except Exception as exc:
+            logger.warning("Manual sheet sync failed: %s", type(exc).__name__)
+            await status.edit_text(
+                f"❌ Sinxronlash xatosi: <code>{type(exc).__name__}</code>. Jadval service account'ga "
+                "'Editor' sifatida ulashilganini tekshiring.",
+                parse_mode="HTML",
+            )
+            return
+        await status.edit_text(f"✅ Google Sheets yangilandi ({count} ta varaq).")
 
     @router.message(is_owner, Command("export"))
     async def cmd_export(message: Message) -> None:

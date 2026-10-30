@@ -200,3 +200,26 @@ Boshqa o'zgarishlar:
 - Gemini kvotasi/kaliti muammosi yoki kutilmagan xato bo'lsa egasiga qisqa xabar boradi (soatiga ko'pi bilan 1 ta).
 - SQLite ishlatilsa, baza har kecha 03:00 (Toshkent) da egasiga `.db.gz` fayl sifatida yuboriladi (PostgreSQL uchun Railway zaxirasidan foydalaning).
 - Vaqt: barcha "bugun/kecha" hisoblari Asia/Tashkent bo'yicha.
+
+---
+
+## Dashboard va Google Sheets
+
+**Dashboard** (rasm + raqamlar): `/dashboard` (joriy oy), `/dashboard kun`, `/dashboard hafta`, `/dashboard 2026-09`,
+yoki oddiy yozing: "dashboard ko'rsat", "haftalik dashboard". `/finance` menyusida ham "🖼 Dashboard" tugmasi bor.
+Rasmda: daromad / xarajat / sof balans / o'rtacha kunlik xarajat, kunlik ustunlar, kategoriyalar, yig'ma xarajat
+(byudjet va oy oxirigacha taxmin bilan). Faqat tasdiqlangan yozuvlar hisoblanadi; dollar alohida ko'rsatiladi.
+
+**Google Sheets** (har tasdiqlangan, tahrirlangan yoki bekor qilingan yozuvdan keyin ~20 soniyada yangilanadi):
+varaqlar: `YYYY-MM` (oyning barcha yozuvlari), `Kunlik` (kunlik jami), `Oylik` (oylik jami).
+
+Sozlash (bir marta):
+1. Google Cloud Console'da loyiha oching, **Google Sheets API** va **Google Drive API** ni yoqing.
+2. *IAM → Service accounts* da yangi service account yarating, **Keys → Add key → JSON** ni yuklab oling.
+3. Google Sheets'da yangi bo'sh jadval oching va uni service account email'iga (`...iam.gserviceaccount.com`) **Editor** sifatida ulashing.
+4. Railway Variables:
+   - `GOOGLE_SHEETS_ID` — jadval havolasidagi `/d/` va `/edit` orasidagi qism;
+   - `GOOGLE_SERVICE_ACCOUNT_JSON` — yuklab olingan JSON fayl matni (yoki uning base64 ko'rinishi).
+5. Deploydan keyin botda `/sheetsync` yuboring (mavjud barcha oylarni yozadi) va `/sheet` bilan havolani oling.
+
+JSON kalit hech qachon gitga qo'yilmasin. Sinxronlash xatosi bo'lsa egasiga qisqa xabar boradi (soatiga 1 ta).

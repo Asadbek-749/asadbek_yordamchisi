@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 ALERT_TEXTS: Dict[str, str] = {
     "ai_quota": "⚠️ Gemini kvotasi tugadi (429). AI javoblari vaqtincha ishlamaydi, bot qoidalar bilan ishlashda davom etadi.",
     "ai_auth": "🔑 Gemini kaliti qabul qilinmadi. Railway'da GEMINI_API_KEY ni tekshiring.",
+    "sheets": "📗 Google Sheets bilan sinxronlashda xato: {detail}. Jadval ulashilganini va kalitni tekshiring (/sheet).",
     "scheduler": "⏰ Eslatmalar rejalashtiruvchisida xato yuz berdi: {detail}. Loglarni tekshiring.",
     "error": "❗ Botda kutilmagan xato: {detail}. Batafsil Railway loglarida.",
 }

@@ -274,6 +274,7 @@ async def run_bot(settings: Settings) -> None:
     discipline_router = build_discipline_router(discipline_service, settings.owner_id)
 
     dp = Dispatcher()
+    sheets_task = None
 
     # Short owner alerts for quota / key / unexpected errors (max one Telegram message per hour)
     from assistant import gemini_client
@@ -300,7 +301,23 @@ async def run_bot(settings: Settings) -> None:
     if _FINANCE_AVAILABLE and settings.owner_id:
         try:
             finance_service = FinanceService()
-            finance_router = build_finance_router(finance_service, settings.owner_id, assistant.generator)
+            from finance import service as finance_service_module
+            from finance.sheets import build_sync_from_env
+            from finance.timeutil import today_local
+
+            # Google Sheets mirror (optional). Read once, then remove the secret from the environment.
+            sheets_sync = build_sync_from_env(
+                os.environ.pop("GOOGLE_SERVICE_ACCOUNT_JSON", None),
+                os.environ.pop("GOOGLE_SHEETS_ID", None),
+                settings.owner_id,
+            )
+            if sheets_sync is not None:
+                finance_service_module.change_hook = sheets_sync.mark_dirty
+                sheets_sync.mark_dirty(today_local())  # refresh current month on startup
+                sheets_task = asyncio.create_task(sheets_sync.run_forever(alerter))
+            finance_router = build_finance_router(
+                finance_service, settings.owner_id, assistant.generator, sheets_sync=sheets_sync
+            )
             dp.include_router(finance_router)
             logger.info("💰 Nargis personal finance router registered.")
         except Exception as _fin_err:
@@ -394,6 +411,8 @@ async def run_bot(settings: Settings) -> None:
         await dp.start_polling(bot, allowed_updates=ALLOWED_UPDATES)
     finally:
         discipline_scheduler.stop()
+        if sheets_task is not None:
+            sheets_task.cancel()
         await close_db()
         if webapp_runner and _WEBAPP_AVAILABLE:
             await stop_webapp_server(webapp_runner)

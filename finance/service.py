@@ -12,7 +12,7 @@ import datetime
 import json
 import logging
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,18 @@ from finance.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Optional callback(*dates) set by bot.py: called after a confirmed/edited/cancelled change so the
+# Google Sheets mirror can refresh the affected months.
+change_hook: Optional[Callable[..., None]] = None
+
+
+def _changed(*dates: datetime.date) -> None:
+    if change_hook is not None and dates:
+        try:
+            change_hook(*dates)
+        except Exception:  # mirroring must never break bookkeeping
+            logger.debug("change_hook failed", exc_info=True)
 
 DEFAULT_EXPENSE_CATEGORIES = [
     ("FOOD", "🍔 Ovqat", "🍔"),
@@ -360,6 +372,7 @@ class FinanceService(RecurringMixin):
             )
             await session.commit()
             await session.refresh(tx)
+            _changed(tx.transaction_date)
             return tx
 
     async def confirm_all_pending(self, owner_id: int, actor_id: int) -> int:
@@ -385,6 +398,7 @@ class FinanceService(RecurringMixin):
                     new_val={"status": "CONFIRMED"},
                 )
             await session.commit()
+            _changed(*{tx.transaction_date for tx in pending_list})
             return len(pending_list)
 
     async def edit_transaction(
@@ -441,6 +455,7 @@ class FinanceService(RecurringMixin):
             )
             await session.commit()
             await session.refresh(tx)
+            _changed(tx.transaction_date)
             return tx
 
     async def cancel_transaction(self, transaction_id: int, actor_id: int) -> Optional[FinancialTransaction]:
@@ -464,6 +479,7 @@ class FinanceService(RecurringMixin):
             )
             await session.commit()
             await session.refresh(tx)
+            _changed(tx.transaction_date)  # a cancelled confirmed record must disappear from the sheet
             return tx
 
     async def get_pending_transactions(self, owner_id: int) -> List[FinancialTransaction]:
