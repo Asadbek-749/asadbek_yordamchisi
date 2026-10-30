@@ -20,6 +20,14 @@
       </button>
     </header>
 
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Bo'lim">
+      <button data-tab="dash" role="tab" class="active">📊 Dashboard</button>
+      <button data-tab="plan" role="tab">🏦 Qarz va reja</button>
+    </nav>
+
+    <section id="msg" class="notice hidden"></section>
+
+    <div id="dashView">
     <nav class="seg" id="seg" role="tablist" aria-label="Davr">
       <button data-kind="day" role="tab">Bugun</button>
       <button data-kind="week" role="tab">Hafta</button>
@@ -31,8 +39,6 @@
       <span id="monthLabel">—</span>
       <button id="nextMonth" class="icon-btn small" aria-label="Keyingi oy">›</button>
     </div>
-
-    <section id="msg" class="notice hidden"></section>
 
     <section id="content" class="hidden">
       <div class="kpis">
@@ -76,6 +82,10 @@
         <div id="txList"></div>
       </article>
     </section>
+
+    </div>
+
+    <section id="planView" class="hidden"></section>
 
     <div id="skeleton" class="skeleton">
       <div class="sk" style="height:84px"></div><div class="sk" style="height:84px"></div>

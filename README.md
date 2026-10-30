@@ -248,3 +248,31 @@ Xavfsizlik: `/api/fin/*` faqat Telegram imzolagan `initData` (bot tokeni bilan H
 va faqat `OWNER_ID` uchun ishlaydi. Shuningdek `/api/applications` (abituriyentlar telefoni) endi faqat egasiga ochiq,
 `server.py` kabi fayllar va papka ro'yxati tashqariga berilmaydi.
 Railway'da `WEBAPP_URL=https://<loyiha>.up.railway.app` o'rnatilgan va servis `PORT` da ishlayotgan bo'lishi kerak.
+
+---
+
+## Qarzlar va oylik reja
+
+Daromad, qarz va kreditlaringizni kiritsangiz, bot oyiga qancha erkin pul qolishini, qarzlar qachon yopilishini va
+qaysi qarzga ko'proq to'lash foydali ekanini hisoblaydi (hammasi `Decimal` bilan, sizning raqamlaringizdan).
+
+| Buyruq | Vazifasi |
+|---|---|
+| `/addincome 5 Oylik 6 million` | Oylik daromad (har oyning 5-kuni). `/incomes`, `/delincome 2` |
+| `/adddebt Kapitalbank kredit \| 24 million \| 1,2 million \| 28 \| 15` | Qarz: nom \| qoldiq \| oylik to'lov \| yillik foiz \| to'lov kuni (foiz va kun ixtiyoriy; oxiriga tur: kredit/nasiya/shaxsiy) |
+| `/debts` | Qarzlar, qoldiq, yopilish sanasi va foiz jami |
+| `/paydebt 1 1,2 million` | To'lovni qayd etish: qoldiq kamayadi (foiz va asosiy qarzga ajratiladi), xarajat «Qarz/Kredit» ga yoziladi |
+| `/editdebt 1 qoldiq 20 million` | Maydon: nom, qoldiq, tolov, foiz, kun (bank ko'chirmasi bilan solishtirib to'g'rilang) |
+| `/deldebt 2` | Ro'yxatdan olib tashlash |
+| `/plan` | To'liq reja: erkin pul, qarz yuki (DTI), qarzlar, namuna taqsimot, zaxira maqsadi, kunlik limit, strategiyalar, 30 kunlik to'lov kalendari, ogohlantirishlar |
+| `/whatif 500 ming` | «Oyiga 500 ming ko'proq to'lasam?»: minimal to'lov, avalanche va snowball taqqoslanadi |
+
+Mini App'da ham shu: **«Qarz va reja»** yorlig'i (qo'shimcha to'lovni sinab ko'rish maydoni bilan).
+
+Qanday hisoblanadi:
+- **Erkin pul** = daromad − qarz to'lovlari − doimiy to'lovlar (`/addrecurring`) − o'rtacha o'zgaruvchan sarf. O'rtacha sarf so'nggi 3 oy tasdiqlangan xarajatlardan olinadi (qarz to'lovlari va doimiy to'lovlardan yaratilgan yozuvlar ikki marta sanalmaydi).
+- **Qarz yuki** = qarz to'lovlari ÷ daromad. 35% dan yuqori ehtiyot, 40% dan yuqori xavfli deb belgilanadi (umumiy mezon).
+- **Yopilish muddati**: har oy foiz (yillik/12) qo'shilib, belgilangan to'lov ayiriladi. To'lov foizni qoplamasa, ogohlantiriladi. Differensial kreditda to'lov kamayib boradi, shuning uchun `/editdebt 1 tolov ...` bilan vaqti-vaqti bilan yangilang.
+- **Avalanche** (foizi eng yuqorisiga) odatda eng kam foiz to'laydi, **snowball** (qoldig'i kichigiga) tezroq yopib, motivatsiya beradi.
+- **Namuna taqsimot** (qo'shimcha qarz / zaxira / erkin sarf) umumiy qoida, shaxsiy maslahat emas. Qarz yuki katta bo'lsa, qarzga ko'proq ajratiladi.
+- Dollardagi daromad/qarz `/setrate` kursi bilan so'mga o'giriladi; kurs yo'q bo'lsa hisobga olinmaydi va bu haqda ogohlantiriladi.

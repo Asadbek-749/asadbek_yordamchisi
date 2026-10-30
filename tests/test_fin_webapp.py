@@ -81,6 +81,7 @@ async def test_every_finance_route_requires_the_owner(client):
     routes = [
         ("get", "/api/fin/dashboard"),
         ("get", "/api/fin/transactions"),
+        ("get", "/api/fin/plan"),
         ("post", f"/api/fin/transactions/{pid}/confirm"),
         ("post", f"/api/fin/transactions/{pid}/cancel"),
         ("post", f"/api/fin/transactions/{pid}/edit"),
@@ -149,3 +150,24 @@ def test_finance_app_url_and_keyboard():
     rows = dashboard_keyboard("https://x.up.railway.app").inline_keyboard
     assert rows[0][0].web_app.url == "https://x.up.railway.app/fin/"
     assert dashboard_keyboard().inline_keyboard[0][0].callback_data == "fin:dash:day"
+
+
+@pytest.mark.asyncio
+async def test_plan_endpoint(client):
+    from finance.planner_service import PlannerService
+
+    planner = PlannerService()
+    await planner.add_income(OWNER, "Oylik", Decimal("6000000"), 5)
+    await planner.add_debt(OWNER, "Kredit", Decimal("12000000"), Decimal("1000000"), Decimal("24"), 15)
+    await planner.add_debt(OWNER + 1, "Begona", Decimal("999"), Decimal("9"), Decimal("0"), 1)  # another owner's debt
+
+    resp = await client.get("/api/fin/plan", headers=auth())
+    plan = (await resp.json())["plan"]
+    assert plan["income"] == 6000000 and plan["debtPayments"] == 1000000 and plan["totalDebt"] == 12000000
+    assert [d["title"] for d in plan["debts"]] == ["Kredit"]  # never someone else's data
+    assert plan["debts"][0]["months"] == 14 and plan["dti"] == 16.7
+    assert plan["scenario"]["avalanche"]["months"] is not None and set(plan["split"]) == {"qarz", "zaxira", "erkin"}
+
+    resp = await client.get("/api/fin/plan?extra=500 ming", headers=auth())
+    assert (await resp.json())["plan"]["scenario"]["extra"] == 500000
+    assert (await client.get("/api/fin/plan?extra=abc", headers=auth())).status == 400

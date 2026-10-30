@@ -23,6 +23,9 @@ from discipline.db import get_session
 from finance.dashboard import DashboardData, collect_dashboard_data
 from finance.extractor import find_amount
 from finance.models import FinancialTransaction
+from finance.planner import Plan, StrategyResult
+from finance.planner_service import PlannerService
+from finance.planner_text import ParseError, parse_money
 from finance.service import FinanceService
 from finance.timeutil import today_local
 
@@ -101,6 +104,56 @@ def tx_to_json(tx: FinancialTransaction) -> Dict[str, Any]:
         "description": tx.description or "",
         "status": tx.status,
         "source": tx.source,
+    }
+
+
+def _strategy_json(res: StrategyResult) -> Dict[str, Any]:
+    return {"months": res.months, "interest": _num(res.total_interest), "order": res.payoff_order}
+
+
+def plan_to_json(plan: Plan) -> Dict[str, Any]:
+    sc = plan.scenario
+    return {
+        "today": plan.inputs.today.isoformat(),
+        "income": _num(plan.income),
+        "debtPayments": _num(plan.debt_payments),
+        "fixedTotal": _num(plan.fixed_total),
+        "variableAvg": _num(plan.variable_avg),
+        "variableMonths": plan.inputs.variable_months,
+        "free": _num(plan.free),
+        "dti": float(plan.dti) if plan.dti is not None else None,
+        "totalDebt": _num(plan.total_debt),
+        "debts": [
+            {
+                "id": l.debt.id, "title": l.debt.title, "kind": l.debt.kind, "balance": _num(l.debt.balance),
+                "rate": float(l.debt.annual_rate_pct), "payment": _num(l.debt.monthly_payment), "payDay": l.debt.pay_day,
+                "months": l.payoff.months, "payoffDate": l.payoff.payoff_date.isoformat() if l.payoff.payoff_date else None,
+                "totalInterest": _num(l.payoff.total_interest), "interestPerMonth": _num(l.interest_per_month),
+            }
+            for l in plan.debt_lines
+        ],
+        "emergency1m": _num(plan.emergency_1m),
+        "emergency3m": _num(plan.emergency_3m),
+        "split": {k: _num(v) for k, v in plan.sample_split.items()},
+        "splitPercent": plan.split_percent,
+        "spendBudget": _num(plan.spend_budget),
+        "dailyLimit": _num(plan.daily_limit),
+        "due30": _num(plan.due_30d),
+        "income30": _num(plan.income_30d),
+        "calendar": [
+            {"date": e.date.isoformat(), "title": e.title, "amount": _num(e.amount), "kind": e.kind}
+            for e in plan.calendar if e.date <= plan.inputs.today + datetime.timedelta(days=30)
+        ],
+        "warnings": plan.warnings,
+        "scenario": None if sc is None else {
+            "extra": _num(sc.extra),
+            "baseline": _strategy_json(sc.baseline),
+            "avalanche": _strategy_json(sc.avalanche),
+            "snowball": _strategy_json(sc.snowball),
+            "best": sc.best.name,
+            "interestSaved": _num(sc.interest_saved(sc.best)),
+            "monthsSaved": sc.months_saved(sc.best),
+        },
     }
 
 
@@ -212,6 +265,22 @@ def register_finance_routes(app: web.Application, owner_id: int, bot_token: str)
             return web.json_response({"ok": False, "error": "cancelled"}, status=409)
         return web.json_response({"ok": True, "transaction": tx_to_json(done)})
 
+    planner = PlannerService(service)
+
+    async def handle_plan(request: web.Request) -> web.Response:
+        if (denied := authorize(request)) is not None:
+            return denied
+        extra = None
+        raw = request.query.get("extra", "").strip()
+        if raw:
+            try:
+                extra, _ = parse_money(raw)
+            except ParseError:
+                return web.json_response({"ok": False, "error": "bad extra"}, status=400)
+        plan = await planner.build_plan(owner_id, extra=extra)
+        return web.json_response({"ok": True, "plan": plan_to_json(plan)})
+
+    app.router.add_get("/api/fin/plan", handle_plan)
     app.router.add_get("/api/fin/dashboard", handle_dashboard)
     app.router.add_get("/api/fin/transactions", handle_transactions)
     app.router.add_post("/api/fin/transactions/{tx_id}/confirm", handle_confirm)

@@ -387,6 +387,8 @@ async def run_bot(settings: Settings) -> None:
                 BotCommand(command="budget", description="🎯 Oylik byudjet holati"),
                 BotCommand(command="export", description="📊 Oylik hisobot Excelda"),
                 BotCommand(command="panel", description="📱 Moliya paneli (Mini App)"),
+                BotCommand(command="plan", description="🏦 Qarzlar va oylik reja"),
+                BotCommand(command="debts", description="💳 Qarz va kreditlar"),
                 BotCommand(command="recurring", description="🔁 Doimiy to'lovlar"),
                 BotCommand(command="setrate", description="💵 Dollar kursini belgilash"),
                 BotCommand(command="finance_compare", description="📈 Haftalik xarajatlar taqqoslash"),

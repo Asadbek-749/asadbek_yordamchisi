@@ -13,7 +13,7 @@
   const PALETTE = ['#4f7cff', '#ff5a5f', '#1fb978', '#f5a524', '#9b6bff', '#17b3c8', '#e0478a', '#8a97a8'];
 
   const $ = (id) => document.getElementById(id);
-  const state = { kind: 'month', month: null, today: null, dash: null, txs: [], pending: 0, openTx: null };
+  const state = { tab: 'dash', plan: null, kind: 'month', month: null, today: null, dash: null, txs: [], pending: 0, openTx: null };
 
   /* ── helpers ── */
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -60,7 +60,7 @@
 
   /* ── loading / messages ── */
   function showMessage(title, text) {
-    $('skeleton').classList.add('hidden'); $('content').classList.add('hidden');
+    $('skeleton').classList.add('hidden'); $('content').classList.add('hidden'); $('planView').classList.add('hidden');
     const m = $('msg'); m.classList.remove('hidden');
     m.innerHTML = `<b>${esc(title)}</b><span class="muted">${esc(text)}</span>`;
   }
@@ -257,6 +257,120 @@
   $('sheetBg').addEventListener('click', closeSheet);
   $('saveAmount').addEventListener('click', () => { const v = $('amountInput').value.trim(); if (v) act('edit', { amount: v }); });
   $('amountInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('saveAmount').click(); });
+
+  /* ── Reja: qarzlar va oylik rejasi ── */
+  const mt = (m) => {
+    if (m === null || m === undefined) return 'yopilmaydi';
+    const y = Math.floor(m / 12), r = m % 12;
+    return m + ' oy' + (y ? ` (${y} yil${r ? ' ' + r + ' oy' : ''})` : '');
+  };
+  const ym2 = (iso) => (iso ? iso.slice(5, 7) + '.' + iso.slice(0, 4) : '—');
+  const KIND = { BANK_CREDIT: 'Bank krediti', INSTALLMENT: 'Nasiya', PERSONAL: 'Shaxsiy qarz' };
+
+  async function loadPlan() {
+    if (!initData) { showMessage('Faqat Telegram ichida', 'Bu panelni bot menyusidagi "Moliya" tugmasi orqali oching.'); return; }
+    $('refresh').classList.add('spin'); $('msg').classList.add('hidden');
+    try {
+      const d = await api('/api/fin/plan');
+      state.plan = d.plan; $('planView').classList.remove('hidden'); renderPlan(d.plan);
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) showMessage('Kirish taqiqlangan', 'Bu panel faqat Asadbek ustoz uchun.');
+      else showMessage('Yuklab bo\'lmadi', 'Internetni tekshirib, yangilash tugmasini bosing.');
+    } finally { $('refresh').classList.remove('spin'); $('skeleton').classList.add('hidden'); }
+  }
+
+  function strategyHtml(sc) {
+    if (!sc) return '<p class="muted small">Qarz kiritilmagan. Qo\'shish: <code>/adddebt</code></p>';
+    const row = (label, r, cls) => `<div class="srow ${cls || ''}"><span>${label}</span><b>${mt(r.months)}</b><em>foiz ${fmt(r.interest)}</em></div>`;
+    const saved = sc.extra > 0 && (sc.monthsSaved || sc.interestSaved > 0)
+      ? `<p class="good">💡 ${sc.best === 'avalanche' ? 'Avalanche' : 'Snowball'} bilan ${sc.monthsSaved ? sc.monthsSaved + ' oy erta yopiladi va ' : ''}taxminan <b>${fmt(sc.interestSaved)}</b> so'm foiz tejaladi.</p>` : '';
+    return row('Faqat minimal to\'lov', sc.baseline) + row('Avalanche · foizi yuqorisidan', sc.avalanche, sc.best === 'avalanche' ? 'best' : '') +
+      row('Snowball · qoldig\'i kichigidan', sc.snowball, sc.best === 'snowball' ? 'best' : '') + saved +
+      (sc.avalanche.order.length ? `<p class="muted small">Yopilish tartibi: ${sc.avalanche.order.map(esc).join(' → ')}</p>` : '');
+  }
+
+  function renderPlan(p) {
+    const v = $('planView');
+    const empty = !p.income && !p.debts.length;
+    if (empty) {
+      v.innerHTML = `<div class="notice"><b>Reja uchun ma'lumot kerak</b><span class="muted">Botda yuboring:<br>
+        <code>/addincome 5 Oylik 6 million</code><br><code>/adddebt Kapitalbank kredit | 24 million | 1,2 million | 28 | 15</code><br>
+        <code>/addrecurring 1 Ijara 1,5 million</code></span></div>`;
+      return;
+    }
+    const free = p.free, freeCls = free >= 0 ? 'income' : 'expense';
+    const dtiCls = p.dti === null ? '' : p.dti >= 40 ? 'bad' : p.dti >= 35 ? 'mid' : 'ok';
+    let html = `<div class="kpis">
+      <article class="kpi income"><span>Daromad</span><b>${fmt(p.income)}</b></article>
+      <article class="kpi expense"><span>Majburiy to'lovlar</span><b>${fmt(p.debtPayments + p.fixedTotal)}</b></article>
+      <article class="kpi avg"><span>O'rtacha sarf${p.variableMonths ? ' · ' + p.variableMonths + ' oy' : ''}</span><b>${fmt(p.variableAvg)}</b></article>
+      <article class="kpi ${freeCls}"><span>Erkin pul</span><b>${free >= 0 ? '+' : '−'}${fmt(Math.abs(free))}</b></article></div>
+      <p class="unit muted">so'mda · oyiga</p>`;
+
+    if (p.dti !== null) {
+      html += `<article class="card"><div class="row"><h2>Qarz yuki</h2><b class="dti ${dtiCls}">${p.dti}%</b></div>
+        <div class="gauge"><i class="${dtiCls}" style="width:${Math.min(p.dti, 100)}%"></i><u style="left:35%"></u><u style="left:40%"></u></div>
+        <p class="muted small">Qarz to'lovlari daromadning ${p.dti}% i. Odatda 35% dan oshmagani ma'qul, 40% dan yuqori xavfli hisoblanadi.</p></article>`;
+    }
+    if (p.warnings.length) {
+      html += `<article class="card warnbox">${p.warnings.map((w) => `<p>⚠️ ${esc(w)}</p>`).join('')}</article>`;
+    }
+    if (p.debts.length) {
+      html += `<article class="card"><div class="row"><h2>Qarzlar</h2><b>${fmt(p.totalDebt)}</b></div>` + p.debts.map((d) => `
+        <div class="debt"><div class="row"><b>${esc(d.title)}</b><span class="chip">${esc(KIND[d.kind] || d.kind)}</span></div>
+        <div class="muted small">qoldiq <b>${fmt(d.balance)}</b> · oylik ${fmt(d.payment)} · ${d.rate ? d.rate + '% yillik' : 'foizsiz'} · har oy ${d.payDay}-kuni</div>
+        <div class="small ${d.months === null ? 'badtxt' : 'goodtxt'}">${d.months === null ? '⚠️ to\'lov foizni qoplamaydi' : '✅ ' + ym2(d.payoffDate) + ' da yopiladi · ' + mt(d.months) + ' · foiz jami ' + fmt(d.totalInterest)}</div></div>`).join('') + '</article>';
+    }
+    if (p.free > 0) {
+      const s = p.split, pc = p.splitPercent;
+      html += `<article class="card"><h2>Namuna taqsimot</h2><p class="muted small">Erkin pul ${fmt(p.free)} so'mni qanday bo'lish mumkin (umumiy qoida)</p>
+        <div class="stack"><i style="width:${pc.qarz}%;background:var(--expense)"></i><i style="width:${pc.zaxira}%;background:var(--accent)"></i><i style="width:${pc.erkin}%;background:var(--income)"></i></div>
+        <ul class="insights">
+          ${pc.qarz ? `<li><span><i class="dot" style="--c:var(--expense)"></i>Qo'shimcha qarz to'lovi · ${pc.qarz}%</span><b>${fmt(s.qarz)}</b></li>` : ''}
+          <li><span><i class="dot" style="--c:var(--accent)"></i>Zaxira jamg'arma · ${pc.zaxira}%</span><b>${fmt(s.zaxira)}</b></li>
+          <li><span><i class="dot" style="--c:var(--income)"></i>Erkin sarf · ${pc.erkin}%</span><b>${fmt(s.erkin)}</b></li></ul></article>`;
+    }
+    html += `<article class="card"><h2>Zaxira va kunlik limit</h2><ul class="insights">
+      <li><span>1 oylik zarur xarajat</span><b>${fmt(p.emergency1m)}</b></li>
+      <li><span>3 oylik zarur xarajat</span><b>${fmt(p.emergency3m)}</b></li>
+      ${p.spendBudget > 0 ? `<li><span>Kunlik xavfsiz sarf limiti</span><b>${fmt(p.dailyLimit)}</b></li>` : ''}</ul></article>`;
+
+    if (p.debts.length) {
+      html += `<article class="card"><h2>Qaysi qarzga ko'proq to'lash?</h2>
+        <label class="extra">Oyiga qo'shimcha to'lov (so'm)<input id="extraInput" inputmode="numeric" placeholder="masalan 500 ming" value="${p.scenario ? Math.round(p.scenario.extra) : ''}"></label>
+        <div id="stratBox">${strategyHtml(p.scenario)}</div></article>`;
+    }
+    html += `<article class="card"><div class="row"><h2>Keyingi 30 kun</h2><span class="muted small">to'lov ${fmt(p.due30)} · daromad ${fmt(p.income30)}</span></div>` +
+      (p.calendar.length ? p.calendar.map((e) => `<div class="ev ${e.kind}"><span>${esc(dm(e.date))}</span><span>${esc(e.title)}</span><b>${e.kind === 'income' ? '+' : '−'}${fmt(e.amount)}</b></div>`).join('') : '<p class="empty">Sanalangan to\'lov yo\'q</p>') + '</article>';
+    html += '<p class="muted small disclaimer">Hisob siz kiritgan raqamlarga tayanadi, taqsimot esa umumiy qoidalar asosida. Bu shaxsiy moliyaviy maslahat emas, qarorni o\'zingiz qabul qilasiz. Qarz qo\'shish va o\'zgartirish: botda /adddebt, /editdebt, /paydebt.</p>';
+    v.innerHTML = html;
+
+    const input = $('extraInput');
+    if (input) {
+      let timer;
+      input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          try {
+            const d = await api('/api/fin/plan?extra=' + encodeURIComponent(input.value.trim() || '0'));
+            $('stratBox').innerHTML = strategyHtml(d.plan.scenario);
+          } catch (e) { toast('Summani tushunmadim'); }
+        }, 500);
+      });
+    }
+  }
+
+  function setTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    $('dashView').classList.toggle('hidden', tab !== 'dash');
+    $('planView').classList.toggle('hidden', tab !== 'plan');
+    $('msg').classList.add('hidden');
+    if (tab === 'plan') { $('skeleton').classList.toggle('hidden', !!state.plan); loadPlan(); } else { load(); }
+  }
+  document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  $('refresh').removeEventListener('click', load);
+  $('refresh').addEventListener('click', () => (state.tab === 'plan' ? loadPlan() : load()));
 
   load();
 })();
