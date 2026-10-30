@@ -183,3 +183,13 @@ def test_conversation_breakout_sanitization():
     # The only closing tag must be at the end of the block
     assert prompt.count("</conversation>") == 1
     assert "< /conversation>" in prompt
+
+
+def test_webapp_url_is_normalised():
+    from assistant.config import normalize_webapp_url
+
+    assert normalize_webapp_url("asadbek-production.up.railway.app") == "https://asadbek-production.up.railway.app"
+    assert normalize_webapp_url(" https://x.up.railway.app/ ") == "https://x.up.railway.app"
+    assert normalize_webapp_url("http://x.up.railway.app") == "https://x.up.railway.app"
+    assert normalize_webapp_url("http://localhost:8080/") == "http://localhost:8080"
+    assert normalize_webapp_url("") is None and normalize_webapp_url(None) is None and normalize_webapp_url("  ") is None

@@ -37,6 +37,19 @@ TRUE_VALUES = {"true", "1", "yes", "on"}
 FALSE_VALUES = {"false", "0", "no", "off"}
 
 
+def normalize_webapp_url(raw: Optional[str]) -> Optional[str]:
+    """Telegram Mini Apps need a full https:// URL. Add the scheme if it was left out (a common slip)
+    and drop trailing slashes so path joining is predictable."""
+    if not raw or not raw.strip():
+        return None
+    url = raw.strip()
+    if "://" not in url:
+        url = "https://" + url
+    elif url.startswith("http://") and not url.startswith(("http://localhost", "http://127.0.0.1")):
+        url = "https://" + url[len("http://"):]
+    return url.rstrip("/")
+
+
 class ConfigError(Exception):
     """Raised when configuration validation fails."""
 
@@ -297,8 +310,7 @@ def load_settings(
     else:
         profile_path = (base_dir / "profile.md").resolve()
 
-    raw_webapp_url = _get_str("WEBAPP_URL")
-    webapp_url = raw_webapp_url if raw_webapp_url else None
+    webapp_url = normalize_webapp_url(_get_str("WEBAPP_URL"))
 
     return Settings(
         bot_token=bot_token,
