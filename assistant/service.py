@@ -593,7 +593,7 @@ class Assistant:
 
         chat_id = message.chat.id
         from_id = from_user.id
-        raw_text = describe_message(message)
+        raw_text = describe(message)
         if not raw_text:
             return
 

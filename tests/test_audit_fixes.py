@@ -557,3 +557,52 @@ async def test_evening_report_does_not_deadlock_on_sqlite(db_env):
 
     evening = [c for c in bot.send_message.await_args_list if "Kechki intizom" in str(c)]
     assert len(evening) == 1
+
+
+# ── typed messages crashed with NameError (describe_message was never defined) ──
+
+@pytest.mark.asyncio
+async def test_direct_text_messages_get_a_reply(make_harness):
+    from aiogram.methods import SendMessage
+
+    harness = make_harness()
+    for sender in (123456, 777):  # the owner and a stranger
+        before = len(harness.session.requests)
+        await harness.direct_message("Salom, bugun nima gap?", from_id=sender)
+        sent = [r for r in harness.session.requests[before:] if isinstance(r, SendMessage)]
+        assert sent, f"no reply for user {sender}"
+        assert not any("xato" in (r.text or "").lower() for r in sent)
+
+
+# ── compound amounts, redundant units and balance statements ───────────────
+
+def test_compound_amounts_are_summed():
+    assert _txs("2 million 400 ming oylik oldim") == [("INCOME", Decimal("2400000"), "MAIN_JOB")]
+    assert _txs("Kitob 1 million 250 ming")[0][1] == Decimal("1250000")
+    assert _txs("Taksi 15 ming")[0][1] == Decimal("15000")  # plain forms unchanged
+
+
+def test_redundant_unit_after_a_full_number():
+    assert _txs("Tushlik 2400000 ming to'ladim")[0][1] == Decimal("2400000")  # typed "ming" on a full number
+    assert _txs("Tushlik 150 ming")[0][1] == Decimal("150000")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Hozir kartamda 2 million 400 ming so'm pul bor.",
+        "Hozir kartamda 2400000 ming pul bor",
+        "Hisobimda 500 ming qoldi",
+        "Hamyonimda 120 ming pul bor",
+    ],
+)
+def test_balance_statements_are_not_transactions(text):
+    res = FinanceExtractor().rule_based_extract(text)
+    assert res.transactions == []
+    assert res.is_ambiguous and "balans" in res.clarification_question.lower()
+
+
+def test_balance_guard_does_not_swallow_real_transactions():
+    assert _txs("Kartamdan 50 ming to'ladim") == [("EXPENSE", Decimal("50000"), "OTHER")]
+    assert _txs("Kartaga 2 million tushdi")[0][:2] == ("INCOME", Decimal("2000000"))
+    assert _txs("Hamyonimdan 30 ming taksiga sarfladim")[0][:2] == ("EXPENSE", Decimal("30000"))

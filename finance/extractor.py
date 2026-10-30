@@ -105,6 +105,15 @@ _FINANCE_HINT_RE = re.compile(
     r"sarfla|ketdi|ishlatdim|to['`’‘]?ladim|toladim|oldim|berdim|tushdi|keldi|maosh|oylik|qarz|kredit"
 )
 
+# "Hozir kartamda 2 million 400 ming so'm pul bor": a balance report, not an expense or an income
+_ACCOUNT_RE = re.compile(r"(?<!\w)(?:kartamda|kartada|kartamizda|hisobimda|hisobda|hamyonimda|hamyonda|cho['`’‘]?ntagimda)(?!\w)")
+_HAVE_RE = re.compile(r"(?<!\w)(?:bor|qoldi|qolgan|turibdi|mavjud|qoldig['`’‘]?i)(?!\w)")
+_MONEY_HAVE_RE = re.compile(r"(?<!\w)(?:pulim\s+(?:bor|qoldi)|pul\s+bor|balans\w*)(?!\w)")
+BALANCE_QUESTION = (
+    "Bu balans haqidagi xabar (hisobingizda qancha pul borligi), xarajat yoki daromad emas, shuning uchun yozib olmadim. "
+    "Yozish uchun: «Tushlik 45 ming» yoki «Oylik 3 million oldim»."
+)
+
 _SPLIT_RE = re.compile(r";|,(?!\d)|(?<!\d),|\bva\b|\bhamda\b|\byana\b", re.IGNORECASE)
 
 _MULTIPLIERS = {"ming": Decimal("1000"), "k": Decimal("1000"), "тыс": Decimal("1000"),
@@ -135,11 +144,22 @@ def find_amount(text: str) -> Optional[Tuple[Decimal, str, bool]]:
 
     m_mil = re.search(r"(\d+(?:\.\d+)?)\s*(?:mln|million)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_mil:
-        return Decimal(m_mil.group(1)) * Decimal("1000000"), "UZS", True
+        mantissa = Decimal(m_mil.group(1))
+        if mantissa >= Decimal("10000"):  # "2400000 million" is a full number with a redundant unit
+            return mantissa, "UZS", True
+        total = mantissa * Decimal("1000000")
+        # "2 million 400 ming" is 2 400 000: add the thousands that directly follow
+        tail = re.match(r"\s*(\d{1,3})\s*(?:ming|k|тыс)(?:ga|da|dan|cha|lik|ni)?\b", clean[m_mil.end():])
+        if tail:
+            total += Decimal(tail.group(1)) * Decimal("1000")
+        return total, "UZS", True
 
     m_ming = re.search(r"(\d+(?:\.\d+)?)\s*(?:ming|k|тыс)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_ming:
-        return Decimal(m_ming.group(1)) * Decimal("1000"), "UZS", True
+        mantissa = Decimal(m_ming.group(1))
+        if mantissa >= Decimal("100000"):  # "2400000 ming": the number is already in so'm, the unit is redundant
+            return mantissa, "UZS", True
+        return mantissa * Decimal("1000"), "UZS", True
 
     m_som = re.search(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{3,})\s*(?:so['`’]?m|sum)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_som:
@@ -224,6 +244,13 @@ class FinanceExtractor:
         desc = re.sub(r"\b(kecha|bugun|ga|da|so['`]?m)\b", "", desc, flags=re.IGNORECASE).strip()
         return re.sub(r"\s+", " ", desc).strip(" ,.-$")
 
+    @staticmethod
+    def _is_balance_statement(lower: str) -> bool:
+        """True for "kartamda 500 ming bor" style messages that report a balance and spend/earn nothing."""
+        if _EXPENSE_RE.search(lower) or _INCOME_RE.search(lower):
+            return False
+        return bool((_ACCOUNT_RE.search(lower) and _HAVE_RE.search(lower)) or _MONEY_HAVE_RE.search(lower))
+
     def rule_based_extract(self, text: str) -> FinanceExtractionResult:
         """Rule-based regex parser for common Uzbek financial statements.
 
@@ -232,6 +259,11 @@ class FinanceExtractor:
         """
         clean = text.strip()
         lower = clean.lower()
+
+        if self._is_balance_statement(lower):
+            return FinanceExtractionResult(
+                transactions=[], is_ambiguous=True, clarification_question=BALANCE_QUESTION, raw_text=clean
+            )
 
         # Check for ambiguity (user mentioned spending/earning but gave no numbers)
         has_money_words = any(w in lower for w in ["pul", "sarfladim", "ketdi", "ishlatdim", "xarajat", "daromad", "oldim"])
