@@ -182,3 +182,21 @@ tests/
   test_claude_cli.py                # ClaudeCLI isolation, redaction, and error tests
   test_config_and_language.py       # Configuration loading, environment wiping, and language tests
 ```
+
+---
+
+## Moliya modulining qo'shimcha buyruqlari
+
+| Buyruq | Vazifasi |
+|---|---|
+| `/export` yoki `/export 2026-10` | Oylik hisobot Excel (.xlsx) faylda: tranzaksiyalar, kategoriya bo'yicha jamlama, xulosa |
+| `/setrate 12650` | 1 USD kursini qo'lda belgilash (dollar summalari so'm hisobotiga qo'shilmaydi, alohida ko'rsatiladi) |
+| `/addrecurring 5 Ijara 2 million` | Har oyning 5-kuni uchun doimiy to'lov; soat 09:00 da eslatma + "Xarajatga qo'shish" tugmasi |
+| `/recurring`, `/delrecurring 3` | Doimiy to'lovlar ro'yxati / o'chirish |
+
+Boshqa o'zgarishlar:
+- Tasdiqlash kartasidagi **✏️ Tahrirlash** tugmasi summa va kategoriyani bot ichida o'zgartiradi.
+- Qoidalar tushunmagan, lekin pul haqidagi gaplar Gemini orqali tahlil qilinadi va doim tasdiqlash tugmasi bilan ko'rsatiladi.
+- Gemini kvotasi/kaliti muammosi yoki kutilmagan xato bo'lsa egasiga qisqa xabar boradi (soatiga ko'pi bilan 1 ta).
+- SQLite ishlatilsa, baza har kecha 03:00 (Toshkent) da egasiga `.db.gz` fayl sifatida yuboriladi (PostgreSQL uchun Railway zaxirasidan foydalaning).
+- Vaqt: barcha "bugun/kecha" hisoblari Asia/Tashkent bo'yicha.
