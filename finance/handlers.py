@@ -13,7 +13,7 @@ from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
-from finance.extractor import FinanceExtractor
+from finance.extractor import FinanceExtractor, find_amount
 from finance.keyboards import (
     back_to_finance_keyboard,
     category_choice_keyboard,
@@ -49,6 +49,9 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             "setbudget",
             "setrate",
             "export",
+            "addrecurring",
+            "recurring",
+            "delrecurring",
             "pendingfinance",
             "finance_today",
             "finance_week",
@@ -201,6 +204,77 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
         await message.answer_document(
             BufferedInputFile(data, filename=f"nargis_moliya_{year}-{month:02d}.xlsx"),
             caption=f"📊 {month_label(year, month).capitalize()} — moliyaviy hisobot",
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Doimiy to'lovlar: /addrecurring, /recurring, /delrecurring
+    # ─────────────────────────────────────────────────────────────────────────
+    @router.message(is_owner, Command("addrecurring"))
+    async def cmd_add_recurring(message: Message) -> None:
+        usage = (
+            "ℹ️ Format: <code>/addrecurring &lt;oy kuni&gt; &lt;nom&gt; &lt;summa&gt;</code>\n"
+            "Masalan: <code>/addrecurring 5 Ijara 2 million</code>"
+        )
+        parts = (message.text or "").split(maxsplit=2)
+        if len(parts) < 3 or not parts[1].isdigit() or not 1 <= int(parts[1]) <= 31:
+            await message.answer(usage, parse_mode="HTML")
+            return
+        found = find_amount(parts[2])
+        title = FinanceExtractor._clean_description(parts[2])
+        if found is None or found[0] <= Decimal("0") or not title:
+            await message.answer(usage, parse_mode="HTML")
+            return
+        amount, currency, _ = found
+        category = extractor._match_category(parts[2].lower(), "EXPENSE")
+        rec = await service.add_recurring(owner_id, title.capitalize(), amount, int(parts[1]), currency, category)
+        await message.answer(
+            f"✅ Doimiy to'lov qo'shildi:\n<b>{rec.title}</b> — {service.format_money(rec.amount, rec.currency)}, "
+            f"har oyning <b>{rec.day_of_month}-kuni</b>.\nO'sha kuni soat 09:00 da eslatib, bir tugma bilan xarajatga qo'shaman.",
+            parse_mode="HTML",
+        )
+
+    @router.message(is_owner, Command("recurring"))
+    async def cmd_list_recurring(message: Message) -> None:
+        items = await service.list_recurring(owner_id)
+        if not items:
+            await message.answer("Doimiy to'lovlar yo'q. Qo'shish: <code>/addrecurring 5 Ijara 2 million</code>", parse_mode="HTML")
+            return
+        lines = ["🔁 <b>Doimiy to'lovlar:</b>\n"]
+        for r in items:
+            lines.append(f"#{r.id} — {r.title}: {service.format_money(r.amount, r.currency)} (har oy {r.day_of_month}-kuni)")
+        lines.append("\nO'chirish: <code>/delrecurring &lt;raqam&gt;</code>")
+        await message.answer("\n".join(lines), parse_mode="HTML")
+
+    @router.message(is_owner, Command("delrecurring"))
+    async def cmd_del_recurring(message: Message) -> None:
+        parts = (message.text or "").split()
+        if len(parts) < 2 or not parts[1].lstrip("#").isdigit():
+            await message.answer("ℹ️ Format: <code>/delrecurring 3</code>", parse_mode="HTML")
+            return
+        ok = await service.delete_recurring(int(parts[1].lstrip("#")), owner_id)
+        await message.answer("🗑 O'chirildi." if ok else "❌ Bunday doimiy to'lov topilmadi.")
+
+    @router.callback_query(is_owner, F.data.startswith("fin:recadd:"))
+    async def cb_recurring_add(callback: CallbackQuery) -> None:
+        rec_id = int(callback.data.split(":")[-1])
+        tx = await service.add_recurring_expense(rec_id, owner_id, today_local())
+        if tx is None:
+            await callback.answer("Bu oy uchun allaqachon qo'shilgan yoki topilmadi.", show_alert=True)
+            return
+        await callback.answer("✅ Xarajatga qo'shildi!")
+        await callback.message.edit_text(
+            f"✅ <b>Doimiy to'lov xarajatga qo'shildi</b>\n\n"
+            f"📌 {tx.description} — <b>{service.format_money(tx.amount, tx.currency)}</b>\n"
+            f"📅 {tx.transaction_date.strftime('%d.%m.%Y')}",
+            parse_mode="HTML",
+        )
+
+    @router.callback_query(is_owner, F.data.startswith("fin:recskip:"))
+    async def cb_recurring_skip(callback: CallbackQuery) -> None:
+        await callback.answer("Yaxshi, keyinroq.")
+        await callback.message.edit_text(
+            f"{callback.message.text}\n\n<i>Hozircha o'tkazib yuborildi. Keyinroq /recurring orqali ko'ring.</i>",
+            parse_mode="HTML",
         )
 
     @router.message(is_owner, Command("setrate"))

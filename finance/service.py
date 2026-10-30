@@ -27,6 +27,7 @@ from finance.models import (
     FinancialBudget,
     FinancialCategory,
     FinancialGoal,
+    FinancialRecurring,
     FinancialReport,
     FinancialSetting,
     FinancialTransaction,
@@ -65,7 +66,93 @@ DEFAULT_INCOME_CATEGORIES = [
 ]
 
 
-class FinanceService:
+# ─────────────────────────────────────────────────────────────────────────────
+# Recurring payments
+# ─────────────────────────────────────────────────────────────────────────────
+
+def effective_day(day_of_month: int, year: int, month: int) -> int:
+    """Clamp day (e.g. 31) to the number of days in the month."""
+    import calendar
+    return min(day_of_month, calendar.monthrange(year, month)[1])
+
+
+class RecurringMixin:
+    """Monthly recurring payments (rent, internet, ...) for FinanceService."""
+
+    async def add_recurring(
+        self, owner_id: int, title: str, amount: Decimal, day_of_month: int,
+        currency: str = "UZS", category_name: str = "OTHER",
+    ) -> "FinancialRecurring":
+        if not 1 <= day_of_month <= 31:
+            raise ValueError("day_of_month must be 1..31")
+        async with get_session() as session:
+            rec = FinancialRecurring(
+                owner_id=owner_id, title=title.strip()[:200], amount=amount, currency=currency,
+                category_name=category_name, day_of_month=day_of_month,
+            )
+            session.add(rec)
+            await session.commit()
+            await session.refresh(rec)
+            return rec
+
+    async def list_recurring(self, owner_id: int) -> List["FinancialRecurring"]:
+        async with get_session() as session:
+            q = select(FinancialRecurring).where(
+                FinancialRecurring.owner_id == owner_id, FinancialRecurring.is_active.is_(True)
+            ).order_by(FinancialRecurring.day_of_month, FinancialRecurring.id)
+            return list((await session.execute(q)).scalars().all())
+
+    async def get_recurring(self, recurring_id: int, owner_id: int) -> Optional["FinancialRecurring"]:
+        async with get_session() as session:
+            rec = await session.get(FinancialRecurring, recurring_id)
+            return rec if rec and rec.owner_id == owner_id and rec.is_active else None
+
+    async def delete_recurring(self, recurring_id: int, owner_id: int) -> bool:
+        async with get_session() as session:
+            rec = await session.get(FinancialRecurring, recurring_id)
+            if not rec or rec.owner_id != owner_id or not rec.is_active:
+                return False
+            rec.is_active = False
+            await session.commit()
+            return True
+
+    async def recurring_due_on(self, owner_id: int, local_date: datetime.date) -> List["FinancialRecurring"]:
+        """Active recurring payments whose (month-clamped) day is local_date's day."""
+        return [
+            r for r in await self.list_recurring(owner_id)
+            if effective_day(r.day_of_month, local_date.year, local_date.month) == local_date.day
+        ]
+
+    async def add_recurring_expense(
+        self, recurring_id: int, owner_id: int, local_date: datetime.date
+    ) -> Optional["FinancialTransaction"]:
+        """Create + confirm this month's expense for a recurring payment (the button tap is the confirmation).
+
+        Returns None if it does not exist or was already added for this month.
+        """
+        from discipline.repository import DisciplineRepository
+
+        rec = await self.get_recurring(recurring_id, owner_id)
+        if rec is None:
+            return None
+        key = f"recurring_added_{rec.id}_{local_date.strftime('%Y-%m')}"
+        async with get_session() as session:
+            repo = DisciplineRepository(session)
+            if await repo.is_reminder_delivered(key):
+                return None
+            await repo.record_reminder_delivered(key, owner_id, "recurring_added")
+            await session.commit()
+
+        item = ExtractedTransactionItem(
+            type="EXPENSE", amount=rec.amount, category=rec.category_name, description=rec.title,
+            currency=rec.currency, transaction_date=local_date,
+        )
+        tx = (await self.create_pending_transactions(owner_id, [item], source="recurring"))[0]
+        return await self.confirm_transaction(tx.id, owner_id)
+
+
+
+class FinanceService(RecurringMixin):
     """Core business logic for personal finances."""
 
     @staticmethod
@@ -677,3 +764,4 @@ class FinanceService:
             await session.commit()
 
         return alerts
+

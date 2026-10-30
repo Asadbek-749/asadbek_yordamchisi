@@ -204,3 +204,18 @@ class FinancialSetting(Base):
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class FinancialRecurring(Base):
+    """Monthly recurring payment (rent, internet, ...) that triggers a reminder with an add-expense button."""
+    __tablename__ = "financial_recurring"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="UZS", nullable=False)
+    category_name: Mapped[str] = mapped_column(String(100), default="OTHER", nullable=False)  # system category key
+    day_of_month: Mapped[int] = mapped_column(Integer, nullable=False)  # 1..31, clamped to month length
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

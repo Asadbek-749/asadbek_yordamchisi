@@ -86,3 +86,15 @@ def category_choice_keyboard(transaction_id: int, categories: list) -> InlineKey
         )
     rows.append([InlineKeyboardButton(text="🔙 Orqaga", callback_data=f"fin:editback:{transaction_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def recurring_reminder_keyboard(recurring_id: int) -> InlineKeyboardMarkup:
+    """One tap adds this month's recurring payment as an expense."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="➕ Xarajatga qo'shish", callback_data=f"fin:recadd:{recurring_id}"),
+                InlineKeyboardButton(text="⏭ Keyinroq", callback_data=f"fin:recskip:{recurring_id}"),
+            ]
+        ]
+    )

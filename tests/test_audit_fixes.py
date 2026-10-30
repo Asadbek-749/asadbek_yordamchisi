@@ -331,3 +331,59 @@ async def test_export_month_workbook(db_env):
     assert float(summary["UZS"][0]) == 3000000.0 and float(summary["UZS"][1]) == 70000.0
     assert float(summary["USD"][1]) == 100.0
     assert pending_only.id  # silence unused warning
+
+
+# ── feature 4: recurring payments ──────────────────────────────────────────
+
+def test_effective_day_clamps_to_month_length():
+    from finance.service import effective_day
+
+    assert effective_day(31, 2026, 2) == 28
+    assert effective_day(31, 2026, 4) == 30
+    assert effective_day(5, 2026, 10) == 5
+
+
+@pytest.mark.asyncio
+async def test_recurring_due_add_once_per_month(db_env):
+    svc = FinanceService()
+    rec = await svc.add_recurring(7, "Ijara", Decimal("2000000"), 31, category_name="HOME")
+    other = await svc.add_recurring(7, "Internet", Decimal("80000"), 5, category_name="INTERNET")
+
+    assert [r.id for r in await svc.recurring_due_on(7, datetime.date(2026, 2, 28))] == [rec.id]
+    assert [r.id for r in await svc.recurring_due_on(7, datetime.date(2026, 10, 5))] == [other.id]
+    assert await svc.recurring_due_on(7, datetime.date(2026, 10, 6)) == []
+
+    tx = await svc.add_recurring_expense(rec.id, 7, datetime.date(2026, 10, 31))
+    assert tx.status == "CONFIRMED" and tx.amount == Decimal("2000000") and tx.type == "EXPENSE"
+    assert tx.source == "recurring"
+    # a second tap in the same month adds nothing; next month works again
+    assert await svc.add_recurring_expense(rec.id, 7, datetime.date(2026, 10, 31)) is None
+    assert await svc.add_recurring_expense(rec.id, 7, datetime.date(2026, 11, 30)) is not None
+    # other owners cannot use it
+    assert await svc.add_recurring_expense(rec.id, 8, datetime.date(2026, 12, 31)) is None
+
+    assert await svc.delete_recurring(rec.id, 7) is True
+    assert [r.id for r in await svc.list_recurring(7)] == [other.id]
+
+
+@pytest.mark.asyncio
+async def test_scheduler_sends_recurring_reminder_once(db_env):
+    from discipline.scheduler import DisciplineScheduler
+
+    svc = FinanceService()
+    await svc.add_recurring(42, "Ijara", Decimal("2000000"), 5, category_name="HOME")
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    service = MagicMock()
+    service.list_today_tasks = AsyncMock(return_value=[])
+    sched = DisciplineScheduler(bot, service, owner_id=42)
+    sched.proactive_engine = None
+
+    # 09:10 local on the 5th (04:10 UTC)
+    now_utc = datetime.datetime(2026, 11, 5, 4, 10, tzinfo=UTC)
+    await sched._check_morning_and_evening_schedules(now_utc)
+    await sched._check_morning_and_evening_schedules(now_utc + datetime.timedelta(minutes=1))
+
+    rec_msgs = [c for c in bot.send_message.await_args_list if "Doimiy to'lov kuni" in str(c)]
+    assert len(rec_msgs) == 1

@@ -180,6 +180,10 @@ class DisciplineScheduler:
                     await repo.record_reminder_delivered(w_key, self.owner_id, "weekly_report")
                     await self._send_weekly_master_report(local_now.date())
 
+            # 3b. Monthly recurring payments (rent, internet...): reminder at 09:00 with a one-tap button
+            if is_reminder_due(local_now, "09:00"):
+                await self._send_recurring_reminders(repo, local_now.date())
+
             # 4. Check monthly budget alerts periodically
             period_key = local_now.strftime("%Y-%m")
             try:
@@ -190,6 +194,28 @@ class DisciplineScheduler:
                     await self.bot.send_message(self.owner_id, alert, parse_mode="HTML")
             except Exception as _b_err:
                 logger.warning("Budget alert check error: %s", _b_err)
+
+    async def _send_recurring_reminders(self, repo: DisciplineRepository, today: datetime.date) -> None:
+        """Remind about recurring payments due today; the idempotency key makes this once per month."""
+        try:
+            from finance.keyboards import recurring_reminder_keyboard
+            from finance.service import FinanceService
+            fin_svc = FinanceService()
+            for rec in await fin_svc.recurring_due_on(self.owner_id, today):
+                key = f"recurring_reminder_{rec.id}_{today.strftime('%Y-%m')}"
+                if await repo.is_reminder_delivered(key):
+                    continue
+                await repo.record_reminder_delivered(key, self.owner_id, "recurring_payment")
+                await self.bot.send_message(
+                    self.owner_id,
+                    f"🔁 <b>Doimiy to'lov kuni</b>\n\n"
+                    f"📌 {rec.title} — <b>{fin_svc.format_money(rec.amount, rec.currency)}</b>\n"
+                    f"Xarajatga qo'shaymi?",
+                    parse_mode="HTML",
+                    reply_markup=recurring_reminder_keyboard(rec.id),
+                )
+        except Exception as e:
+            logger.warning("Recurring payment reminder error: %s", e)
 
     async def _send_evening_finance_check(self, today: datetime.date) -> None:
         """Remind owner to record today's income and expenses if not already done."""
