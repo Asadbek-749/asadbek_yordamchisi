@@ -9,9 +9,11 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, timedelta
 from decimal import Decimal
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
+
+from finance.timeutil import today_local
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,7 @@ class ExtractedTransactionItem:
     category: str
     description: Optional[str] = None
     currency: str = "UZS"
-    transaction_date: date = field(default_factory=date.today)
+    transaction_date: date = field(default_factory=today_local)
     confidence: float = 1.0
 
 
@@ -71,33 +73,88 @@ class FinanceExtractionResult:
         return sum((t.amount for t in self.transactions), Decimal("0.00"))
 
 
-def parse_uzbek_amount(text: str) -> Optional[Decimal]:
-    """Parse Uzbek numeric text like '45 ming', '85 mingga', '2 million', '50k', '150 000' into Decimal."""
-    clean = text.lower().replace(",", ".").strip()
+_MONTHS = "yanvar|fevral|mart|aprel|may|iyun|iyul|avgust|sentyabr|oktyabr|noyabr|dekabr"
+_CUR_UNIT = r"(?:so['`’]?m|sum|usd|\$|dollar\w*)"
 
-    # Pattern: 2.5 million / 2 million / 2 mln / 2 millionga / 2 mlnlik
+# Numbers that look like money but are dates, years, times or phone numbers.
+_NON_MONEY_PATTERNS = [
+    re.compile(r"\+?\s*998[\s\-()]*\d{2}[\s\-()]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}\b"),
+    re.compile(r"\b998\d{9}\b"),
+    re.compile(rf"\b9\d{{8}}\b(?!\s*{_CUR_UNIT})"),
+    re.compile(r"\b\d{4}-\d{1,2}-\d{1,2}\b"),
+    re.compile(r"\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b"),
+    re.compile(r"\b\d{4}\s*-?\s*yil\w*"),
+    re.compile(rf"\b\d{{1,2}}\s*-?\s*(?:{_MONTHS})\w*"),
+    re.compile(r"\b\d{1,2}:\d{2}\b"),
+    re.compile(r"\bsoat\s*\d{1,2}\b"),
+]
+
+_INCOME_WORDS = [
+    "daromad", "oylik", "maosh", "avans", "zarplata", "tushum",
+    "tushdi", "topdim", "keldi", "ishladim", "pul oldim",
+]
+_EXPENSE_WORDS = [
+    "sarfladim", "ketdi", "ishlatdim", "to'ladim", "toladim", "to‘ladim",
+    "xarajat", "sotib oldim", "berdim", "to'lov", "tolov",
+]
+_INCOME_RE = re.compile(r"\b(?:" + "|".join(re.escape(w) for w in _INCOME_WORDS) + r")\w*")
+_EXPENSE_RE = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(w) for w in _EXPENSE_WORDS) + r")\w*")
+
+_SPLIT_RE = re.compile(r";|,(?!\d)|(?<!\d),|\bva\b|\bhamda\b|\byana\b", re.IGNORECASE)
+
+_MULTIPLIERS = {"ming": Decimal("1000"), "k": Decimal("1000"), "тыс": Decimal("1000"),
+                "mln": Decimal("1000000"), "million": Decimal("1000000")}
+
+
+def mask_non_money(text: str) -> str:
+    """Blank out dates, years, clock times and phone numbers so they are never read as amounts."""
+    for pattern in _NON_MONEY_PATTERNS:
+        text = pattern.sub(" ", text)
+    return text
+
+
+def find_amount(text: str) -> Optional[Tuple[Decimal, str, bool]]:
+    """Find the money amount in text. Returns (amount, currency, has_unit) or None.
+
+    has_unit is False for bare digits ("15000"), which callers should only trust in a money context.
+    """
+    clean = mask_non_money(text.lower()).replace(",", ".")
+
+    # USD: "100 dollar", "25$", "$25", "3 ming usd"
+    m_usd = re.search(r"(\d+(?:\.\d+)?)\s*(ming|k|mln|million)?\s*(?:\$|usd\b|dollar\w*)", clean)
+    if not m_usd:
+        m_usd = re.search(r"\$\s*(\d+(?:\.\d+)?)()", clean)
+    if m_usd:
+        mult = _MULTIPLIERS.get(m_usd.group(2) or "", Decimal("1"))
+        return Decimal(m_usd.group(1)) * mult, "USD", True
+
     m_mil = re.search(r"(\d+(?:\.\d+)?)\s*(?:mln|million)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_mil:
-        return Decimal(m_mil.group(1)) * Decimal("1000000")
+        return Decimal(m_mil.group(1)) * Decimal("1000000"), "UZS", True
 
-    # Pattern: 45 ming / 45k / 45 тыс / 45 mingga / 45 minglik / 45k ga
     m_ming = re.search(r"(\d+(?:\.\d+)?)\s*(?:ming|k|тыс)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_ming:
-        return Decimal(m_ming.group(1)) * Decimal("1000")
+        return Decimal(m_ming.group(1)) * Decimal("1000"), "UZS", True
 
-    # Pattern: 150 000 / 150000 / 150.000 / 8000 so'm / 8000 so'mga
-    m_som = re.search(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{3,})\s*(?:so['`]?m|sum|usd|\$|dollar)(?:ga|da|dan|cha|lik|ni)?\b", clean)
+    m_som = re.search(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{3,})\s*(?:so['`’]?m|sum)(?:ga|da|dan|cha|lik|ni)?\b", clean)
     if m_som:
-        raw_num = m_som.group(1).replace(" ", "").replace(".", "")
-        return Decimal(raw_num)
+        return Decimal(m_som.group(1).replace(" ", "").replace(".", "")), "UZS", True
 
-    # Pattern: raw formatted digits: 150 000 / 150000 / 150.000
-    m_digits = re.search(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{4,})", clean)
-    if m_digits:
-        raw_num = m_digits.group(1).replace(" ", "").replace(".", "")
-        return Decimal(raw_num)
+    for m in re.finditer(r"(\d{1,3}(?:[\s\.]\d{3})+|\d{4,})", clean):
+        raw = m.group(1)
+        digits = raw.replace(" ", "").replace(".", "")
+        grouped = digits != raw
+        if not grouped and (1900 <= int(digits) <= 2100 or len(digits) >= 10):
+            continue  # a year or an ID / phone, not money
+        return Decimal(digits), "UZS", False
 
     return None
+
+
+def parse_uzbek_amount(text: str) -> Optional[Decimal]:
+    """Parse Uzbek numeric text like '45 ming', '85 mingga', '2 million', '50k', '150 000' into Decimal."""
+    found = find_amount(text)
+    return found[0] if found else None
 
 
 class FinanceExtractor:
@@ -106,8 +163,8 @@ class FinanceExtractor:
     def __init__(self, ai_generator: Optional[Any] = None) -> None:
         self.ai = ai_generator
 
-    def _match_category(self, text: str, tx_type: str) -> str:
-        """Find best matching category from keywords with smart Uzbek stemming and domain priority."""
+    def _find_category(self, text: str, tx_type: str) -> Optional[str]:
+        """Best matching category from keywords (Uzbek stemming, domain priority), or None."""
         lower = text.lower()
         mapping = INCOME_KEYWORDS if tx_type == "INCOME" else EXPENSE_KEYWORDS
 
@@ -148,10 +205,26 @@ class FinanceExtractor:
                     pattern = rf"\b{re.escape(kw_clean)}[a-z'`]*\b"
                     if re.search(pattern, lower):
                         return cat
-        return "OTHER"
+        return None
+
+    def _match_category(self, text: str, tx_type: str) -> str:
+        return self._find_category(text, tx_type) or "OTHER"
+
+    @staticmethod
+    def _clean_description(text: str) -> str:
+        desc = re.sub(
+            r"\d+(?:\.\d+)?\s*(?:ming|mln|million|k|so['`]?m|usd|dollar\w*|\$)?(?:ga|da|dan|cha|lik|ni)?",
+            "", text, flags=re.IGNORECASE,
+        ).strip()
+        desc = re.sub(r"\b(kecha|bugun|ga|da|so['`]?m)\b", "", desc, flags=re.IGNORECASE).strip()
+        return re.sub(r"\s+", " ", desc).strip(" ,.-$")
 
     def rule_based_extract(self, text: str) -> FinanceExtractionResult:
-        """Rule-based regex parser for common Uzbek financial statements."""
+        """Rule-based regex parser for common Uzbek financial statements.
+
+        Income vs expense is decided for every part of the message separately; a part that only
+        carries a meaning ("Oylik oldim") passes it to the next part that holds the amount.
+        """
         clean = text.strip()
         lower = clean.lower()
 
@@ -169,47 +242,58 @@ class FinanceExtractor:
                 raw_text=clean,
             )
 
-        # Multi-item split by comma, "va", "va yana", "hamda"
-        parts = re.split(r"[,;]|\bva\b|\bhamda\b|\byana\b", clean, flags=re.IGNORECASE)
-        transactions: List[ExtractedTransactionItem] = []
-
-        # Explicit income triggers
-        income_triggers = [
-            "daromad", "oylik", "maosh", "avans", "zarplata", "tushum",
-            "pul tushdi", "tushdi", "topdim", "keldi", "ishladim",
-            "pul oldim", "oylik oldim", "maosh oldim", "avans oldim",
-        ]
-        is_income_overall = any(w in lower for w in income_triggers)
-
-        # Detect transaction date (today vs yesterday)
-        import datetime
-        tx_date = date.today()
+        tx_date = today_local()
         if "kecha" in lower or "kechagi" in lower:
-            tx_date = date.today() - datetime.timedelta(days=1)
+            tx_date = tx_date - timedelta(days=1)
         elif "oldingi kun" in lower or "avvalgi kun" in lower:
-            tx_date = date.today() - datetime.timedelta(days=2)
+            tx_date = tx_date - timedelta(days=2)
 
-        for part in parts:
+        transactions: List[ExtractedTransactionItem] = []
+        pending: Optional[Tuple[str, str]] = None  # (type, text) of an amount-less part
+
+        for part in _SPLIT_RE.split(clean):
             part = part.strip()
             if not part:
                 continue
+            part_lower = part.lower()
+            income_sig = bool(_INCOME_RE.search(part_lower))
+            expense_sig = bool(_EXPENSE_RE.search(part_lower))
 
-            amount = parse_uzbek_amount(part)
-            if amount is None or amount <= Decimal("0"):
+            found = find_amount(part)
+            if found is None:
+                if expense_sig:
+                    pending = ("EXPENSE", part_lower)
+                elif income_sig:
+                    pending = ("INCOME", part_lower)
+                else:
+                    pending = None
                 continue
 
-            part_lower = part.lower()
-            part_is_income = is_income_overall or any(w in part_lower for w in income_triggers)
-            tx_type = "INCOME" if part_is_income else "EXPENSE"
+            amount, currency, has_unit = found
+            if amount <= Decimal("0"):
+                continue
 
-            category = self._match_category(part_lower, tx_type)
+            ctx_text = part_lower
+            used_pending = False
+            if expense_sig:
+                tx_type = "EXPENSE"
+            elif income_sig:
+                tx_type = "INCOME"
+            elif pending is not None:
+                tx_type = pending[0]
+                ctx_text = f"{pending[1]} {part_lower}"
+                used_pending = True
+            else:
+                tx_type = "EXPENSE"
+            pending_text = pending[1] if used_pending and pending else ""
+            pending = None
 
-            # Clean description
-            desc = re.sub(r"\d+(?:\.\d+)?\s*(?:ming|mln|million|k|so['`]?m)?(?:ga|da|dan|cha|lik|ni)?", "", part, flags=re.IGNORECASE).strip()
-            desc = re.sub(r"\b(kecha|bugun|ga|da|so['`]?m)\b", "", desc, flags=re.IGNORECASE).strip()
-            desc = re.sub(r"\s+", " ", desc).strip(" ,.-")
-            if not desc:
-                desc = category.capitalize()
+            category = self._find_category(ctx_text, tx_type)
+            if not has_unit and not (income_sig or expense_sig or used_pending or category):
+                continue  # bare digits without any money context
+            category = category or "OTHER"
+
+            desc = self._clean_description(part) or self._clean_description(pending_text) or category.capitalize()
 
             transactions.append(
                 ExtractedTransactionItem(
@@ -217,18 +301,12 @@ class FinanceExtractor:
                     amount=amount,
                     category=category,
                     description=desc.capitalize(),
+                    currency=currency,
                     transaction_date=tx_date,
                 )
             )
 
-        if transactions:
-            return FinanceExtractionResult(
-                transactions=transactions,
-                is_ambiguous=False,
-                raw_text=clean,
-            )
-
-        return FinanceExtractionResult(transactions=[], is_ambiguous=False, raw_text=clean)
+        return FinanceExtractionResult(transactions=transactions, is_ambiguous=False, raw_text=clean)
 
     async def extract(self, text: str) -> FinanceExtractionResult:
         """Extract transactions using rules first, and AI fallback if ambiguous or complex."""
@@ -291,7 +369,7 @@ class FinanceExtractor:
                         amount=amt,
                         category=cat,
                         description=desc,
-                        transaction_date=date.today(),
+                        transaction_date=today_local(),
                     )
                 )
             except Exception:
