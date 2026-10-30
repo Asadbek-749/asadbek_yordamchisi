@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -66,6 +67,25 @@ def create_engine_and_factory(
     return engine, factory
 
 
+def build_schema_alterations(dialect: str) -> list[str]:
+    """ALTER TABLE statements that bring older databases up to the current models."""
+    pg = dialect == "postgresql"
+    add = "ADD COLUMN IF NOT EXISTS" if pg else "ADD COLUMN"
+    ts = "TIMESTAMP WITH TIME ZONE" if pg else "TIMESTAMP"
+    false_default = "FALSE" if pg else "0"
+    return [
+        f"ALTER TABLE discipline_tasks {add} postponement_count INTEGER DEFAULT 0",
+        f"ALTER TABLE discipline_tasks {add} delay_reason TEXT",
+        f"ALTER TABLE discipline_tasks {add} actual_minutes INTEGER",
+        f"ALTER TABLE discipline_tasks {add} started_at {ts}",
+        f"ALTER TABLE nargis_messages {add} chat_id BIGINT",
+        f"ALTER TABLE nargis_messages {add} sender_name VARCHAR(255)",
+        f"ALTER TABLE nargis_messages {add} sender_username VARCHAR(255)",
+        f"ALTER TABLE nargis_messages {add} is_deleted BOOLEAN DEFAULT {false_default}",
+        f"ALTER TABLE nargis_messages {add} deleted_at {ts}",
+    ]
+
+
 async def init_db(
     db_url: Optional[str] = None, data_dir: Optional[Path] = None
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
@@ -89,24 +109,17 @@ async def init_db(
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-        # Safe dynamic schema extensions for existing databases
-        alterations = [
-            "ALTER TABLE discipline_tasks ADD COLUMN postponement_count INTEGER DEFAULT 0",
-            "ALTER TABLE discipline_tasks ADD COLUMN delay_reason TEXT",
-            "ALTER TABLE discipline_tasks ADD COLUMN actual_minutes INTEGER",
-            "ALTER TABLE discipline_tasks ADD COLUMN started_at TIMESTAMP",
-            "ALTER TABLE nargis_messages ADD COLUMN chat_id BIGINT",
-            "ALTER TABLE nargis_messages ADD COLUMN sender_name VARCHAR(255)",
-            "ALTER TABLE nargis_messages ADD COLUMN sender_username VARCHAR(255)",
-            "ALTER TABLE nargis_messages ADD COLUMN is_deleted BOOLEAN DEFAULT 0",
-            "ALTER TABLE nargis_messages ADD COLUMN deleted_at TIMESTAMP",
-        ]
-        from sqlalchemy import text
-        for alt in alterations:
+    # Safe dynamic schema extensions for existing databases. Each ALTER runs in its own
+    # SAVEPOINT so one failure cannot abort the whole PostgreSQL transaction.
+    dialect = engine.dialect.name
+    async with engine.connect() as conn:
+        for alt in build_schema_alterations(dialect):
             try:
-                await conn.execute(text(alt))
-            except Exception:
-                pass  # Column already exists or table freshly created
+                async with conn.begin_nested():
+                    await conn.execute(text(alt))
+            except Exception as exc:  # column already exists (SQLite) or table missing
+                logger.debug("Schema extension skipped (%s): %s", alt, exc)
+        await conn.commit()
 
     logger.info("Database schema verified and ready.")
     return engine, factory

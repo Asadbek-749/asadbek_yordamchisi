@@ -109,7 +109,27 @@ class NargisBrain:
                 requires_owner=False,
             )
 
-        import re
+        # 0. Explicit "Reja:" / "Maqsad:" prefixes win over money analysis
+        #    (e.g. "Reja: 1) dars 2) 2026 hisobot" must never become an expense).
+        head = lower.lstrip()
+        if head.startswith(("reja:", "rejam:", "rejalarim:", "bugungi reja:")):
+            return BrainActionRequest(
+                intent=BrainIntent.PLAN_CREATE,
+                confidence=ConfidenceLevel.HIGH,
+                module="boss",
+                entities={"raw_text": cleaned},
+                requires_confirmation=False,
+                requires_owner=True,
+            )
+        if head.startswith(("maqsad:", "yangi maqsad:")):
+            return BrainActionRequest(
+                intent=BrainIntent.GOAL_CREATE,
+                confidence=ConfidenceLevel.HIGH,
+                module="goals",
+                entities={"raw_text": cleaned},
+                requires_confirmation=True,
+                requires_owner=True,
+            )
 
         # 1. Finance Query checks (e.g. "Meni kechagi xarajatlarim qancha edi?", "bu hafta qancha pul sarfladim?", "moliya holati qanday?")
         is_fin_query = (

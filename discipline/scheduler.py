@@ -16,6 +16,25 @@ from discipline.service import DisciplineService
 
 logger = logging.getLogger(__name__)
 
+CATCH_UP_WINDOW_MINUTES = 90
+
+
+def is_reminder_due(
+    local_now: datetime.datetime, hhmm: str, window_minutes: int = CATCH_UP_WINDOW_MINUTES
+) -> bool:
+    """True when local_now is within [hhmm, hhmm + window) on the same local day.
+
+    The window lets a reminder still go out if the bot was restarting at the exact minute;
+    the idempotency key prevents sending it twice.
+    """
+    try:
+        hour, minute = (int(p) for p in hhmm.strip().split(":"))
+        target = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    except (ValueError, AttributeError):
+        return False
+    delta = (local_now - target).total_seconds()
+    return 0 <= delta < window_minutes * 60
+
 
 class DisciplineScheduler:
     """Manages scheduled morning plans, evening accountability, deadline alerts, and focus timer alerts."""
@@ -137,18 +156,17 @@ class DisciplineScheduler:
 
             tz = ZoneInfo(settings.timezone)
             local_now = now_utc.astimezone(tz)
-            local_time_str = local_now.strftime("%H:%M")
             local_date_str = local_now.strftime("%Y-%m-%d")
 
             # 1. Morning reminder (e.g. 07:00)
-            if local_time_str == settings.morning_reminder_time:
+            if is_reminder_due(local_now, settings.morning_reminder_time):
                 key = f"morning_{self.owner_id}_{local_date_str}"
                 if not await repo.is_reminder_delivered(key):
                     await repo.record_reminder_delivered(key, self.owner_id, "morning_plan")
                     await self._send_morning_plan(local_now.date())
 
             # 2. Evening report and finance close (e.g. 21:00)
-            if local_time_str == settings.evening_report_time:
+            if is_reminder_due(local_now, settings.evening_report_time):
                 key = f"evening_{self.owner_id}_{local_date_str}"
                 if not await repo.is_reminder_delivered(key):
                     await repo.record_reminder_delivered(key, self.owner_id, "evening_report")
@@ -156,7 +174,7 @@ class DisciplineScheduler:
                     await self._send_evening_finance_check(local_now.date())
 
             # 3. Weekly finance & discipline report on Sunday at 20:00
-            if local_now.weekday() == 6 and local_time_str == "20:00":
+            if local_now.weekday() == 6 and is_reminder_due(local_now, "20:00"):
                 w_key = f"weekly_report_{self.owner_id}_{local_date_str}"
                 if not await repo.is_reminder_delivered(w_key):
                     await repo.record_reminder_delivered(w_key, self.owner_id, "weekly_report")
