@@ -219,3 +219,35 @@ class FinancialRecurring(Base):
     day_of_month: Mapped[int] = mapped_column(Integer, nullable=False)  # 1..31, clamped to month length
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class FinancialIncomeSource(Base):
+    """A regular monthly income (salary, side job) used by the budget planner."""
+    __tablename__ = "financial_income_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="UZS", nullable=False)
+    pay_day: Mapped[int] = mapped_column(Integer, nullable=False)  # 1..31, clamped to month length
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class FinancialDebt(Base):
+    """A debt the owner has to pay back: bank credit, instalment purchase or a personal loan."""
+    __tablename__ = "financial_debts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), default="BANK_CREDIT", nullable=False)  # BANK_CREDIT/INSTALLMENT/PERSONAL
+    balance: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)  # what is still owed (principal)
+    annual_rate_pct: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=Decimal("0.00"), nullable=False)
+    monthly_payment: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=Decimal("0.00"), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="UZS", nullable=False)
+    pay_day: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

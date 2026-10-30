@@ -59,6 +59,7 @@ def build_finance_router(
             "export",
             "dashboard",
             "panel",
+            "addincome", "incomes", "delincome", "adddebt", "debts", "paydebt", "editdebt", "deldebt", "plan", "whatif",
             "sheet",
             "sheetsync",
             "addrecurring",
@@ -830,6 +831,11 @@ def build_finance_router(
             parse_mode="HTML",
             reply_markup=back_to_finance_keyboard(),
         )
+
+    from finance.planner_handlers import register_planner_handlers
+    from finance.planner_service import PlannerService
+
+    register_planner_handlers(router, PlannerService(service), owner_id)
 
     return router
 
