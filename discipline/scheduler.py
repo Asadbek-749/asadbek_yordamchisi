@@ -45,6 +45,7 @@ class DisciplineScheduler:
         self.owner_id = owner_id
         self.scheduler = AsyncIOScheduler()
         self._is_running = False
+        self.alerter = None  # optional OwnerAlerter, set by bot.py
         try:
             from nargis.proactive import ProactiveEngine
             self.proactive_engine = ProactiveEngine(owner_id, bot)
@@ -87,6 +88,8 @@ class DisciplineScheduler:
             await self._check_morning_and_evening_schedules(now_utc)
         except Exception as e:
             logger.error("Error in DisciplineScheduler.tick_check: %s", e, exc_info=True)
+            if self.alerter is not None:
+                self.alerter.alert_nowait("scheduler", type(e).__name__)
 
     async def _check_focus_sessions(self, now_utc: datetime.datetime) -> None:
         """Alert user when active focus session has finished."""

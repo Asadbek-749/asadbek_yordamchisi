@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
 
@@ -14,6 +14,18 @@ logger = logging.getLogger(__name__)
 
 # Fast, reliable lightweight models to fall back to if the selected model is experiencing high demand (503)
 DEFAULT_FALLBACK_MODELS = ("gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash-lite")
+
+
+# Optional callback(kind, detail) set by bot.py to alert the owner about quota / key problems.
+error_hook: Optional[Callable[[str, str], None]] = None
+
+
+def _notify(kind: str, detail: str = "") -> None:
+    if error_hook is not None:
+        try:
+            error_hook(kind, detail)
+        except Exception:  # alerting must never break AI calls
+            logger.debug("error_hook failed", exc_info=True)
 
 
 class GeminiError(ClaudeError):
@@ -122,9 +134,11 @@ class GeminiClient:
 
                         # Non-retryable client errors
                         if status == 429:
+                            _notify("ai_quota")
                             raise GeminiLimitError("Gemini rate limit or quota exceeded.")
                         elif status in (400, 401, 403):
                             if "API_KEY_INVALID" in text or "key not valid" in text.lower():
+                                _notify("ai_auth")
                                 raise GeminiAuthError(f"Gemini API key is invalid: {text[:250]}")
                             raise GeminiError(f"Gemini client error ({status}): {text[:250]}")
 

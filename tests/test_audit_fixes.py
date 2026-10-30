@@ -387,3 +387,61 @@ async def test_scheduler_sends_recurring_reminder_once(db_env):
 
     rec_msgs = [c for c in bot.send_message.await_args_list if "Doimiy to'lov kuni" in str(c)]
     assert len(rec_msgs) == 1
+
+
+# ── feature 5: owner alerts (max once per hour) ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_owner_alerts_are_rate_limited():
+    from notification.alerts import OwnerAlerter
+
+    now = [1000.0]
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    alerter = OwnerAlerter(bot, owner_id=42, clock=lambda: now[0])
+
+    assert await alerter.alert("ai_quota") is True
+    assert await alerter.alert("error", "ValueError") is False  # inside the hour
+    assert await alerter.alert("ai_quota") is False
+    assert bot.send_message.await_count == 1
+
+    now[0] += 3601
+    assert await alerter.alert("error", "ValueError") is True
+    assert bot.send_message.await_count == 2
+    second_text = bot.send_message.await_args_list[1].args[1]
+    assert "ValueError" in second_text and "2 ta" in second_text  # reports what was suppressed
+
+
+@pytest.mark.asyncio
+async def test_alert_failure_never_raises():
+    from notification.alerts import OwnerAlerter
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock(side_effect=RuntimeError("telegram down"))
+    assert await OwnerAlerter(bot, owner_id=1).alert("error", "X") is False
+
+
+@pytest.mark.asyncio
+async def test_gemini_quota_and_key_errors_trigger_hook(monkeypatch):
+    from assistant import gemini_client
+    from assistant.gemini_client import GeminiAuthError, GeminiClient, GeminiLimitError
+
+    seen = []
+    monkeypatch.setattr(gemini_client, "error_hook", lambda kind, detail="": seen.append(kind))
+
+    client = GeminiClient(api_key="k", model="gemini-3.5-flash-lite")
+
+    async def quota(session, model, payload):
+        return 429, "quota"
+
+    monkeypatch.setattr(client, "_post_generate", quota)
+    with pytest.raises(GeminiLimitError):
+        await client.generate("s", "u")
+
+    async def bad_key(session, model, payload):
+        return 400, "API_KEY_INVALID"
+
+    monkeypatch.setattr(client, "_post_generate", bad_key)
+    with pytest.raises(GeminiAuthError):
+        await client.generate("s", "u")
+    assert seen == ["ai_quota", "ai_auth"]

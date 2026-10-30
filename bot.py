@@ -274,6 +274,19 @@ async def run_bot(settings: Settings) -> None:
     discipline_router = build_discipline_router(discipline_service, settings.owner_id)
 
     dp = Dispatcher()
+
+    # Short owner alerts for quota / key / unexpected errors (max one Telegram message per hour)
+    from assistant import gemini_client
+    from notification.alerts import OwnerAlerter
+    alerter = OwnerAlerter(bot, settings.owner_id)
+    gemini_client.error_hook = alerter.alert_nowait
+
+    @dp.errors()
+    async def on_unhandled_error(event: Any) -> bool:
+        logger.error("Unhandled error in update handler: %s", event.exception, exc_info=event.exception)
+        alerter.alert_nowait("error", type(event.exception).__name__)
+        return True
+
     # Nargis owner inbox router (registered first for priority)
     if _NARGIS_ROUTER_AVAILABLE and settings.owner_id:
         try:
@@ -308,6 +321,7 @@ async def run_bot(settings: Settings) -> None:
 
 
     discipline_scheduler = DisciplineScheduler(bot, discipline_service, settings.owner_id)
+    discipline_scheduler.alerter = alerter
     discipline_scheduler.start()
 
     port_env = os.environ.get("PORT") or os.environ.get("WEBAPP_PORT")
