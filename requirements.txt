@@ -7,3 +7,4 @@ alembic>=1.13
 apscheduler>=3.10,<4.0
 greenlet>=3.0
 tzdata>=2024.1
+openpyxl>=3.1

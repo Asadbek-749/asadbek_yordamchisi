@@ -48,6 +48,7 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             "budget",
             "setbudget",
             "setrate",
+            "export",
             "pendingfinance",
             "finance_today",
             "finance_week",
@@ -179,6 +180,27 @@ def build_finance_router(service: FinanceService, owner_id: int, ai_generator: O
             f"🎯 Limit: <b>{service.format_money(budget.limit_amount)}</b>",
             parse_mode="HTML",
             reply_markup=back_to_finance_keyboard(),
+        )
+
+    @router.message(is_owner, Command("export"))
+    async def cmd_export(message: Message) -> None:
+        args = message.text.split()[1:] if message.text else []
+        today = today_local()
+        year, month = today.year, today.month
+        if args:
+            try:
+                parsed = datetime.datetime.strptime(args[0], "%Y-%m")
+                year, month = parsed.year, parsed.month
+            except ValueError:
+                await message.answer("❌ Format: <code>/export</code> yoki <code>/export 2026-10</code>", parse_mode="HTML")
+                return
+
+        from aiogram.types import BufferedInputFile
+        from finance.export import export_month
+        data = await export_month(owner_id, year, month)
+        await message.answer_document(
+            BufferedInputFile(data, filename=f"nargis_moliya_{year}-{month:02d}.xlsx"),
+            caption=f"📊 {month_label(year, month).capitalize()} — moliyaviy hisobot",
         )
 
     @router.message(is_owner, Command("setrate"))

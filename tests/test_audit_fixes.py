@@ -288,3 +288,46 @@ async def test_cancelled_record_cannot_be_revived_by_old_button(db_env):
     await svc.cancel_transaction(tx.id, 7)
     assert await svc.confirm_transaction(tx.id, 7) is None
     assert await svc.edit_transaction(tx.id, 7, new_amount=Decimal("5")) is None
+
+
+# ── feature 3: /export ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_export_month_workbook(db_env):
+    import io
+
+    from openpyxl import load_workbook
+
+    from finance.export import export_month
+    from finance.extractor import ExtractedTransactionItem
+
+    svc = FinanceService()
+    d = datetime.date(2026, 10, 12)
+    items = [
+        ExtractedTransactionItem("EXPENSE", Decimal("15000"), "TRANSPORT", "Taksi", "UZS", d),
+        ExtractedTransactionItem("EXPENSE", Decimal("45000"), "FOOD", "Tushlik", "UZS", d),
+        ExtractedTransactionItem("EXPENSE", Decimal("25000"), "FOOD", "Kechki ovqat", "UZS", d),
+        ExtractedTransactionItem("INCOME", Decimal("3000000"), "MAIN_JOB", "Oylik", "UZS", d),
+        ExtractedTransactionItem("EXPENSE", Decimal("100"), "SHOPPING", "Kitob", "USD", d),
+        ExtractedTransactionItem("EXPENSE", Decimal("999"), "FOOD", "Boshqa oy", "UZS", datetime.date(2026, 9, 30)),
+    ]
+    created = await svc.create_pending_transactions(7, items)
+    pending_only = created[0]
+    for tx in created[1:]:
+        await svc.confirm_transaction(tx.id, 7)  # the first one stays PENDING
+
+    wb = load_workbook(io.BytesIO(await export_month(7, 2026, 10)))
+    assert wb.sheetnames == ["Tranzaksiyalar", "Kategoriya bo'yicha", "Xulosa"]
+
+    rows = list(wb["Tranzaksiyalar"].iter_rows(values_only=True))
+    assert rows[0] == ("Sana", "Turi", "Kategoriya", "Summa", "Valyuta", "Izoh", "Manba", "Holat")
+    assert len(rows) == 1 + 4  # confirmed this-month records only (no pending, no September)
+
+    cat_rows = {(r[0], r[1], r[2]): r[3] for r in wb["Kategoriya bo'yicha"].iter_rows(min_row=2, values_only=True)}
+    food = [v for (t, c, cur), v in cat_rows.items() if "Ovqat" in c and cur == "UZS"]
+    assert food and float(food[0]) == 70000.0
+
+    summary = {r[0]: r[1:] for r in wb["Xulosa"].iter_rows(min_row=4, max_row=5, values_only=True)}
+    assert float(summary["UZS"][0]) == 3000000.0 and float(summary["UZS"][1]) == 70000.0
+    assert float(summary["USD"][1]) == 100.0
+    assert pending_only.id  # silence unused warning
