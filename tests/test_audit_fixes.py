@@ -523,3 +523,37 @@ async def test_duplicate_detection_matches_category_key(db_env):
     assert await svc.detect_duplicate(7, Decimal("45000"), "FOOD") is True
     assert await svc.detect_duplicate(7, Decimal("45000"), "TRANSPORT") is False
     assert await svc.detect_duplicate(8, Decimal("45000"), "FOOD") is False
+
+
+# ── SQLite "database is locked": reminders held a write transaction while nested sessions wrote ──
+
+@pytest.mark.asyncio
+async def test_evening_report_does_not_deadlock_on_sqlite(db_env):
+    from types import SimpleNamespace
+
+    from discipline.db import get_session
+    from discipline.repository import DisciplineRepository
+    from discipline.scheduler import DisciplineScheduler
+
+    async def report_like_the_real_service(user_id, today):
+        # the real service opens its own session and writes, exactly like this
+        async with get_session() as session:
+            await DisciplineRepository(session).get_or_create_settings(user_id + 1000)
+        metrics = SimpleNamespace(planned_count=0, completed_count=0, completion_rate_pct=0,
+                                  missed_count=0, focus_minutes=0, habits_completed=0, habits_total=0)
+        return metrics, "ok"
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock()
+    service = MagicMock()
+    service.generate_and_save_daily_report = report_like_the_real_service
+    sched = DisciplineScheduler(bot, service, owner_id=42)
+    sched.proactive_engine = None
+
+    # fresh database (no settings row yet), 21:25 Tashkent = inside the 21:00 catch-up window
+    now_utc = datetime.datetime(2026, 10, 30, 16, 25, tzinfo=UTC)
+    await sched._check_morning_and_evening_schedules(now_utc)
+    await sched._check_morning_and_evening_schedules(now_utc + datetime.timedelta(minutes=1))
+
+    evening = [c for c in bot.send_message.await_args_list if "Kechki intizom" in str(c)]
+    assert len(evening) == 1

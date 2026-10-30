@@ -148,62 +148,68 @@ class DisciplineScheduler:
             # Also flag overdue tasks
             await repo.mark_overdue_tasks(self.owner_id, now_utc)
 
+    async def _claim(self, key: str, reminder_type: str) -> bool:
+        """Atomically mark a reminder as delivered in its own short transaction.
+
+        Returns False if it was already delivered. The transaction is committed before anything is
+        sent: SQLite allows a single writer, so holding it open while the senders open their own
+        sessions would end in "database is locked".
+        """
+        async with get_session() as session:
+            repo = DisciplineRepository(session)
+            if await repo.is_reminder_delivered(key):
+                return False
+            await repo.record_reminder_delivered(key, self.owner_id, reminder_type)
+        return True
+
     async def _check_morning_and_evening_schedules(self, now_utc: datetime.datetime) -> None:
         """Trigger morning plan and evening report according to user's local timezone."""
         async with get_session() as session:
-            repo = DisciplineRepository(session)
-            settings = await repo.get_or_create_settings(self.owner_id)
+            settings = await DisciplineRepository(session).get_or_create_settings(self.owner_id)
+        # session committed and closed here; nothing below runs inside a transaction
 
-            if not settings.reminders_enabled:
-                return
+        if not settings.reminders_enabled:
+            return
 
-            tz = ZoneInfo(settings.timezone)
-            local_now = now_utc.astimezone(tz)
-            local_date_str = local_now.strftime("%Y-%m-%d")
+        tz = ZoneInfo(settings.timezone)
+        local_now = now_utc.astimezone(tz)
+        local_date_str = local_now.strftime("%Y-%m-%d")
 
-            # 1. Morning reminder (e.g. 07:00)
-            if is_reminder_due(local_now, settings.morning_reminder_time):
-                key = f"morning_{self.owner_id}_{local_date_str}"
-                if not await repo.is_reminder_delivered(key):
-                    await repo.record_reminder_delivered(key, self.owner_id, "morning_plan")
-                    await self._send_morning_plan(local_now.date())
+        # 1. Morning reminder (e.g. 07:00)
+        if is_reminder_due(local_now, settings.morning_reminder_time):
+            if await self._claim(f"morning_{self.owner_id}_{local_date_str}", "morning_plan"):
+                await self._send_morning_plan(local_now.date())
 
-            # 2. Evening report and finance close (e.g. 21:00)
-            if is_reminder_due(local_now, settings.evening_report_time):
-                key = f"evening_{self.owner_id}_{local_date_str}"
-                if not await repo.is_reminder_delivered(key):
-                    await repo.record_reminder_delivered(key, self.owner_id, "evening_report")
-                    await self._send_evening_review(local_now.date())
-                    await self._send_evening_finance_check(local_now.date())
+        # 2. Evening report and finance close (e.g. 21:00)
+        if is_reminder_due(local_now, settings.evening_report_time):
+            if await self._claim(f"evening_{self.owner_id}_{local_date_str}", "evening_report"):
+                await self._send_evening_review(local_now.date())
+                await self._send_evening_finance_check(local_now.date())
 
-            # 3. Weekly finance & discipline report on Sunday at 20:00
-            if local_now.weekday() == 6 and is_reminder_due(local_now, "20:00"):
-                w_key = f"weekly_report_{self.owner_id}_{local_date_str}"
-                if not await repo.is_reminder_delivered(w_key):
-                    await repo.record_reminder_delivered(w_key, self.owner_id, "weekly_report")
-                    await self._send_weekly_master_report(local_now.date())
+        # 3. Weekly finance & discipline report on Sunday at 20:00
+        if local_now.weekday() == 6 and is_reminder_due(local_now, "20:00"):
+            if await self._claim(f"weekly_report_{self.owner_id}_{local_date_str}", "weekly_report"):
+                await self._send_weekly_master_report(local_now.date())
 
-            # 3b. Monthly recurring payments (rent, internet...): reminder at 09:00 with a one-tap button
-            if is_reminder_due(local_now, "09:00"):
-                await self._send_recurring_reminders(repo, local_now.date())
+        # 3b. Monthly recurring payments (rent, internet...): reminder at 09:00 with a one-tap button
+        if is_reminder_due(local_now, "09:00"):
+            await self._send_recurring_reminders(local_now.date())
 
-            # 3c. Nightly database backup to the owner (SQLite only), 03:00 local with catch-up
-            if is_reminder_due(local_now, "03:00"):
-                b_key = f"backup_{self.owner_id}_{local_date_str}"
-                if not await repo.is_reminder_delivered(b_key):
-                    await repo.record_reminder_delivered(b_key, self.owner_id, "nightly_backup")
-                    await self._send_nightly_backup(local_now.date())
+        # 3c. Nightly database backup to the owner (SQLite only), 03:00 local with catch-up
+        if is_reminder_due(local_now, "03:00"):
+            if await self._claim(f"backup_{self.owner_id}_{local_date_str}", "nightly_backup"):
+                await self._send_nightly_backup(local_now.date())
 
-            # 4. Check monthly budget alerts periodically
-            period_key = local_now.strftime("%Y-%m")
-            try:
-                from finance.service import FinanceService
-                fin_svc = FinanceService()
-                alerts = await fin_svc.check_budget_alerts(self.owner_id, period_key)
-                for alert in alerts:
-                    await self.bot.send_message(self.owner_id, alert, parse_mode="HTML")
-            except Exception as _b_err:
-                logger.warning("Budget alert check error: %s", _b_err)
+        # 4. Check monthly budget alerts periodically
+        period_key = local_now.strftime("%Y-%m")
+        try:
+            from finance.service import FinanceService
+            fin_svc = FinanceService()
+            alerts = await fin_svc.check_budget_alerts(self.owner_id, period_key)
+            for alert in alerts:
+                await self.bot.send_message(self.owner_id, alert, parse_mode="HTML")
+        except Exception as _b_err:
+            logger.warning("Budget alert check error: %s", _b_err)
 
     async def _send_nightly_backup(self, today: datetime.date) -> None:
         try:
@@ -215,7 +221,7 @@ class DisciplineScheduler:
             if self.alerter is not None:
                 self.alerter.alert_nowait("scheduler", f"zaxira nusxa: {type(e).__name__}")
 
-    async def _send_recurring_reminders(self, repo: DisciplineRepository, today: datetime.date) -> None:
+    async def _send_recurring_reminders(self, today: datetime.date) -> None:
         """Remind about recurring payments due today; the idempotency key makes this once per month."""
         try:
             from finance.keyboards import recurring_reminder_keyboard
@@ -223,9 +229,8 @@ class DisciplineScheduler:
             fin_svc = FinanceService()
             for rec in await fin_svc.recurring_due_on(self.owner_id, today):
                 key = f"recurring_reminder_{rec.id}_{today.strftime('%Y-%m')}"
-                if await repo.is_reminder_delivered(key):
+                if not await self._claim(key, "recurring_payment"):
                     continue
-                await repo.record_reminder_delivered(key, self.owner_id, "recurring_payment")
                 await self.bot.send_message(
                     self.owner_id,
                     f"🔁 <b>Doimiy to'lov kuni</b>\n\n"
